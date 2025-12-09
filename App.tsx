@@ -1293,36 +1293,69 @@ const App: React.FC = () => {
             )}
 
             {activeTab === 'market' && (
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                     {[...Object.values(CROPS), ...Object.values(PRODUCTS)].map(item => {
-                         const count = (gameState.harvested[item.id] || 0);
-                         const isTrending = marketTrend?.cropId === item.id;
-                         const price = isTrending ? Math.floor(item.baseSellPrice * marketTrend!.multiplier) : item.baseSellPrice;
-                         
-                         if (count === 0) return null;
+                 <div className="space-y-4">
+                     <div className="mb-4">
+                         <h2 className="text-2xl font-bold text-slate-200 flex items-center gap-2 mb-2">
+                             <TrendingUp size={24} /> Market
+                         </h2>
+                         <p className="text-sm text-slate-400">Sell your harvested crops and products</p>
+                     </div>
+                     
+                     {(() => {
+                         const itemsToSell = [...Object.values(CROPS), ...Object.values(PRODUCTS)].filter(item => {
+                             const count = (gameState.harvested[item.id] || 0);
+                             return count > 0;
+                         });
+
+                         if (itemsToSell.length === 0) {
+                             return (
+                                 <div className="bg-slate-800/50 rounded-xl p-8 border border-white/5 text-center">
+                                     <TrendingUp size={48} className="mx-auto mb-4 text-slate-500 opacity-50" />
+                                     <h3 className="text-lg font-bold text-slate-300 mb-2">No Items to Sell</h3>
+                                     <p className="text-sm text-slate-400 mb-4">
+                                         Harvest some crops first, then come back to sell them!
+                                     </p>
+                                     <Button onClick={() => setActiveTab('field')} variant="primary">
+                                         Go to Farm
+                                     </Button>
+                                 </div>
+                             );
+                         }
 
                          return (
-                            <div key={item.id} className="bg-slate-800/50 rounded-xl p-4 border border-white/5 flex justify-between items-center hover:bg-slate-800/80 transition-colors">
-                                <div className="flex items-center gap-4">
-                                    <div className="text-3xl filter drop-shadow-md">{item.emoji}</div>
-                                    <div>
-                                        <div className="font-bold text-slate-200">{item.name}</div>
-                                        <div className="text-xs text-slate-400">In Stock: {count}</div>
-                                    </div>
-                                </div>
-                                <div className="flex flex-col items-end gap-2">
-                                     <div className={`font-mono font-bold ${isTrending ? 'text-emerald-400 animate-pulse' : 'text-amber-400'}`}>
-                                         {price} <Coins size={12} className="inline"/>
-                                         {isTrending && <span className="ml-1 text-[10px] bg-emerald-500/20 px-1 rounded">HOT</span>}
-                                     </div>
-                                     <div className="flex gap-2">
-                                        <Button size="sm" onClick={() => handleSell(item.id, 1, price)}>Sell 1</Button>
-                                        <Button size="sm" variant="secondary" onClick={() => handleSell(item.id, count, price)}>Sell All ({count})</Button>
-                                     </div>
-                                </div>
-                            </div>
-                         )
-                     })}
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                 {itemsToSell.map(item => {
+                                     const count = (gameState.harvested[item.id] || 0);
+                                     const isTrending = marketTrend?.cropId === item.id;
+                                     const price = isTrending && marketTrend ? Math.floor(item.baseSellPrice * marketTrend.multiplier) : item.baseSellPrice;
+                                     
+                                     return (
+                                        <div key={item.id} className="bg-slate-800/50 rounded-xl p-4 border border-white/5 hover:bg-slate-800/80 transition-colors">
+                                            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="text-3xl filter drop-shadow-md flex-shrink-0">{item.emoji}</div>
+                                                    <div className="min-w-0">
+                                                        <div className="font-bold text-slate-200">{item.name}</div>
+                                                        <div className="text-xs text-slate-400">In Stock: {count}</div>
+                                                    </div>
+                                                </div>
+                                                <div className="flex flex-col sm:items-end gap-2">
+                                                     <div className={`font-mono font-bold text-sm sm:text-base ${isTrending ? 'text-emerald-400 animate-pulse' : 'text-amber-400'}`}>
+                                                         {price} <Coins size={12} className="inline"/>
+                                                         {isTrending && <span className="ml-1 text-[10px] bg-emerald-500/20 px-1 rounded">HOT</span>}
+                                                     </div>
+                                                     <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                                                        <Button size="sm" onClick={() => handleSell(item.id, 1, price)} className="w-full sm:w-auto">Sell 1</Button>
+                                                        <Button size="sm" variant="secondary" onClick={() => handleSell(item.id, count, price)} className="w-full sm:w-auto">Sell All ({count})</Button>
+                                                     </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                     );
+                                 })}
+                             </div>
+                         );
+                     })()}
                  </div>
             )}
 
