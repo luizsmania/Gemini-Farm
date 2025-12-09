@@ -117,7 +117,27 @@ const App: React.FC = () => {
   const showNotification = (notification: Omit<Notification, 'id'>) => {
     const id = Math.random().toString(36).substr(2, 9);
     setNotifications(prev => {
-      const newNotifications = [...prev, { ...notification, id }];
+      // If notification has a groupKey, try to merge with existing notification
+      if (notification.groupKey) {
+        const existingIndex = prev.findIndex(n => n.groupKey === notification.groupKey && n.type === notification.type);
+        if (existingIndex >= 0) {
+          const existing = prev[existingIndex];
+          const newCount = (existing.count || 1) + 1;
+          const newNotifications = [...prev];
+          newNotifications[existingIndex] = {
+            ...existing,
+            count: newCount,
+            title: notification.title.replace(/\sx\d+$/, '') + ` x${newCount}`,
+            duration: notification.duration || existing.duration || 1000,
+            // Reset timer by updating id
+            id: Math.random().toString(36).substr(2, 9)
+          };
+          // Limit to maximum 5 notifications
+          return newNotifications.slice(-5);
+        }
+      }
+      
+      const newNotifications = [...prev, { ...notification, id, count: 1 }];
       // Limit to maximum 5 notifications
       return newNotifications.slice(-5);
     });
@@ -660,7 +680,8 @@ const App: React.FC = () => {
             type: 'success',
             title: `Harvested ${crop.name}`,
             message: `${crop.emoji} +${totalXp} XP`,
-            duration: 1000
+            duration: 1000,
+            groupKey: `harvest-${crop.id}` // Group by crop type
           });
         }
 
@@ -706,7 +727,8 @@ const App: React.FC = () => {
         type: 'info',
         title: 'Watered',
         message: '💧 Crop is now hydrated!',
-        duration: 1000
+        duration: 1000,
+        groupKey: 'water' // Group all watering notifications
       });
 
       setGameState(prev => ({
@@ -729,9 +751,10 @@ const App: React.FC = () => {
           const itemName = CROPS[item as CropId]?.name || PRODUCTS[item as ProductId]?.name || 'Item';
           showNotification({
             type: 'success',
-            title: `Sold ${amount}x ${itemName}`,
+            title: `Sold ${itemName}`,
             message: `+${totalEarned} coins, +${xpGain} XP`,
-            duration: 1000
+            duration: 1000,
+            groupKey: `sell-${item}` // Group by item type
           });
 
           // Check for level up
@@ -997,6 +1020,18 @@ const App: React.FC = () => {
                         <span className="font-bold font-mono text-amber-100 text-xs sm:text-sm">{gameState.coins.toLocaleString()}</span>
                     </div>
                     <div className="flex items-center gap-1 sm:gap-2 pl-2 sm:pl-4 border-l border-white/10 relative" data-account-info>
+                         {/* Mobile: Show level and XP bar */}
+                         <div className="flex sm:hidden items-center gap-1.5">
+                            <span className="text-[10px] text-slate-400 font-bold">Lvl {gameState.level}</span>
+                            <div className="w-16 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                                <div 
+                                    className="h-full bg-emerald-500" 
+                                    style={{ width: `${Math.min(100, (gameState.xp / XP_TO_LEVEL_UP(gameState.level)) * 100)}%` }} 
+                                />
+                            </div>
+                         </div>
+                         
+                         {/* Desktop: Show full account info */}
                          <div className="hidden sm:flex flex-col items-end">
                             <button 
                                 onClick={() => setShowAccountInfo(!showAccountInfo)}

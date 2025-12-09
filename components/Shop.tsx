@@ -9,6 +9,7 @@ interface ShopProps {
   coins: number;
   level: number;
   plotCount: number;
+  inventory: Record<CropId, number>; // Add inventory prop
   onBuySeed: (cropId: CropId, amount: number) => void;
   onBuyBuilding: (buildingId: BuildingId) => void;
   onBuyDecoration: (decorationId: DecorationId) => void;
@@ -17,7 +18,7 @@ interface ShopProps {
 }
 
 export const Shop: React.FC<ShopProps> = ({ 
-  coins, level, plotCount, onBuySeed, onBuyBuilding, onBuyDecoration, onBuySprinkler, onBuyPlot 
+  coins, level, plotCount, inventory, onBuySeed, onBuyBuilding, onBuyDecoration, onBuySprinkler, onBuyPlot 
 }) => {
   const [activeCategory, setActiveCategory] = useState<'seeds' | 'buildings' | 'decor'>('seeds');
   
@@ -103,7 +104,10 @@ export const Shop: React.FC<ShopProps> = ({
                             </div>
                         </div>
                         <h4 className="font-bold text-slate-200">{crop.name}</h4>
-                        <p className="text-xs text-slate-500 mb-4 h-8">{crop.description}</p>
+                        <p className="text-xs text-slate-500 mb-2 h-8">{crop.description}</p>
+                        <div className="mb-3 text-xs text-emerald-400 font-semibold">
+                          In stock: {inventory[crop.id] || 0}
+                        </div>
                         <div className="grid grid-cols-2 gap-2">
                             <Button size="sm" variant="secondary" disabled={isLocked || coins < crop.buyPrice} onClick={() => onBuySeed(crop.id, 1)}>x1</Button>
                             <Button size="sm" variant="secondary" disabled={isLocked || coins < crop.buyPrice*5} onClick={() => onBuySeed(crop.id, 5)}>x5</Button>

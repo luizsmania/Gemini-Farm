@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
-import { Coins, Star, Sparkles, CheckCircle } from 'lucide-react';
+import { Coins, Star, Sparkles, CheckCircle, X } from 'lucide-react';
 
 interface QuestRewardProps {
   coins: number;
@@ -12,21 +12,25 @@ export const QuestReward: React.FC<QuestRewardProps> = ({ coins, xp, onComplete 
   const [visible, setVisible] = useState(true);
   const [phase, setPhase] = useState<'entering' | 'showing' | 'exiting'>('entering');
 
+  const handleClose = () => {
+    setPhase('exiting');
+    setTimeout(() => {
+      setVisible(false);
+      onComplete();
+    }, 500);
+  };
+
   useEffect(() => {
     // Enter animation
     setTimeout(() => setPhase('showing'), 100);
     
-    // Exit after showing
+    // Auto-close after 4 seconds
     const exitTimer = setTimeout(() => {
-      setPhase('exiting');
-      setTimeout(() => {
-        setVisible(false);
-        onComplete();
-      }, 500);
-    }, 2500);
+      handleClose();
+    }, 4000);
 
     return () => clearTimeout(exitTimer);
-  }, [onComplete]);
+  }, []);
 
   if (!visible) return null;
 
@@ -46,12 +50,20 @@ export const QuestReward: React.FC<QuestRewardProps> = ({ coins, xp, onComplete 
           bg-gradient-to-br from-purple-600 via-pink-600 to-amber-500
           border-4 border-white/30
           rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 shadow-2xl mx-4
-          transform transition-all duration-500
+          transform transition-all duration-500 pointer-events-auto
           ${phase === 'entering' ? 'scale-0 rotate-180 opacity-0' : ''}
           ${phase === 'showing' ? 'scale-100 rotate-0 opacity-100 animate-bounce-in' : ''}
           ${phase === 'exiting' ? 'scale-75 rotate-45 opacity-0' : ''}
         `}
       >
+        {/* Close Button */}
+        <button
+          onClick={handleClose}
+          className="absolute top-2 right-2 sm:top-4 sm:right-4 z-20 bg-white/20 hover:bg-white/30 rounded-full p-1.5 sm:p-2 transition-colors backdrop-blur-sm border border-white/30"
+          aria-label="Close"
+        >
+          <X size={18} className="sm:w-5 sm:h-5 text-white" />
+        </button>
         {/* Sparkle effects */}
         <div className="absolute inset-0 overflow-hidden rounded-3xl">
           {[...Array(20)].map((_, i) => (
@@ -83,32 +95,32 @@ export const QuestReward: React.FC<QuestRewardProps> = ({ coins, xp, onComplete 
           </div>
 
           {/* Title */}
-          <h2 className="text-4xl font-black text-white mb-2 drop-shadow-lg animate-bounce-in" style={{ animationDelay: '0.1s' }}>
+          <h2 className="text-2xl sm:text-3xl md:text-4xl font-black text-white mb-2 drop-shadow-lg animate-bounce-in" style={{ animationDelay: '0.1s' }}>
             QUEST COMPLETE!
           </h2>
           
-          <div className="text-white/90 text-lg mb-6 animate-bounce-in" style={{ animationDelay: '0.2s' }}>
+          <div className="text-white/90 text-sm sm:text-base md:text-lg mb-4 sm:mb-6 animate-bounce-in" style={{ animationDelay: '0.2s' }}>
             Great job, farmer!
           </div>
 
           {/* Rewards */}
-          <div className="flex items-center justify-center gap-8 mb-4 animate-bounce-in" style={{ animationDelay: '0.3s' }}>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-6 md:gap-8 mb-4 animate-bounce-in" style={{ animationDelay: '0.3s' }}>
             {/* Coins */}
-            <div className="bg-white/20 backdrop-blur-sm rounded-2xl p-4 border-2 border-white/30">
-              <div className="flex items-center gap-2 mb-1">
-                <Coins size={32} className="text-amber-300 drop-shadow-lg" />
-                <span className="text-3xl font-black text-white drop-shadow-lg">+{coins.toLocaleString()}</span>
+            <div className="bg-white/20 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-4 border-2 border-white/30 w-full sm:w-auto">
+              <div className="flex items-center justify-center gap-2 mb-1">
+                <Coins size={24} className="sm:w-8 sm:h-8 text-amber-300 drop-shadow-lg" />
+                <span className="text-2xl sm:text-3xl font-black text-white drop-shadow-lg">+{coins.toLocaleString()}</span>
               </div>
-              <div className="text-white/80 text-sm font-bold">COINS</div>
+              <div className="text-white/80 text-xs sm:text-sm font-bold text-center">COINS</div>
             </div>
 
             {/* XP */}
-            <div className="bg-white/20 backdrop-blur-sm rounded-2xl p-4 border-2 border-white/30">
-              <div className="flex items-center gap-2 mb-1">
-                <Star size={32} className="text-emerald-300 drop-shadow-lg" />
-                <span className="text-3xl font-black text-white drop-shadow-lg">+{xp.toLocaleString()}</span>
+            <div className="bg-white/20 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-4 border-2 border-white/30 w-full sm:w-auto">
+              <div className="flex items-center justify-center gap-2 mb-1">
+                <Star size={24} className="sm:w-8 sm:h-8 text-emerald-300 drop-shadow-lg" />
+                <span className="text-2xl sm:text-3xl font-black text-white drop-shadow-lg">+{xp.toLocaleString()}</span>
               </div>
-              <div className="text-white/80 text-sm font-bold">EXPERIENCE</div>
+              <div className="text-white/80 text-xs sm:text-sm font-bold text-center">EXPERIENCE</div>
             </div>
           </div>
 

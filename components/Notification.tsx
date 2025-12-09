@@ -9,6 +9,8 @@ export interface Notification {
   message?: string;
   icon?: React.ReactNode;
   duration?: number;
+  count?: number; // For grouped notifications
+  groupKey?: string; // Key to identify notifications that should be grouped
 }
 
 interface NotificationProps {
@@ -80,7 +82,14 @@ export const NotificationItem: React.FC<NotificationProps> = ({ notification, on
         {getIcon()}
       </div>
       <div className="relative z-10 flex-1">
-        <div className="font-bold text-white text-sm">{notification.title}</div>
+        <div className="font-bold text-white text-sm">
+          {notification.title}
+          {notification.count && notification.count > 1 && (
+            <span className="ml-2 text-xs bg-white/20 px-2 py-0.5 rounded-full">
+              x{notification.count}
+            </span>
+          )}
+        </div>
         {notification.message && (
           <div className="text-white/90 text-xs mt-1">{notification.message}</div>
         )}
