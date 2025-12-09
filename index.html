@@ -2,7 +2,15 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="description" content="Build and manage your farm, complete missions, and grow your village!" />
+    <meta name="theme-color" content="#10b981" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Gemini Farm" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" type="image/png" href="/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
     <title>Gemini Farm Tycoon</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -29,12 +37,125 @@
       .animate-float {
         animation: float 3s ease-in-out infinite;
       }
+      @keyframes slideInRight {
+        from {
+          transform: translateX(100%);
+          opacity: 0;
+        }
+        to {
+          transform: translateX(0);
+          opacity: 1;
+        }
+      }
+      .animate-slide-in-right {
+        animation: slideInRight 0.3s ease-out;
+      }
+      @keyframes floatUp {
+        0% {
+          transform: translate(-50%, -50%) translateY(0);
+          opacity: 1;
+        }
+        100% {
+          transform: translate(-50%, -50%) translateY(-80px);
+          opacity: 0;
+        }
+      }
+      .animate-float-up {
+        animation: floatUp 2s ease-out forwards;
+      }
+      @keyframes shine {
+        0% {
+          transform: translateX(-100%);
+        }
+        100% {
+          transform: translateX(100%);
+        }
+      }
+      .animate-shine {
+        animation: shine 2s ease-in-out infinite;
+      }
+      @keyframes bounceIn {
+        0% {
+          transform: scale(0.3);
+          opacity: 0;
+        }
+        50% {
+          transform: scale(1.05);
+        }
+        70% {
+          transform: scale(0.9);
+        }
+        100% {
+          transform: scale(1);
+          opacity: 1;
+        }
+      }
+      .animate-bounce-in {
+        animation: bounceIn 0.5s ease-out;
+      }
+      @keyframes pulse-glow {
+        0%, 100% {
+          box-shadow: 0 0 5px rgba(16, 185, 129, 0.5);
+        }
+        50% {
+          box-shadow: 0 0 20px rgba(16, 185, 129, 0.8), 0 0 30px rgba(16, 185, 129, 0.6);
+        }
+      }
+      .animate-pulse-glow {
+        animation: pulse-glow 1.5s ease-in-out infinite;
+      }
+      @keyframes sparkle {
+        0%, 100% {
+          opacity: 0;
+          transform: scale(0);
+        }
+        50% {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+      .animate-sparkle {
+        animation: sparkle 2s ease-in-out infinite;
+      }
+      @keyframes confetti {
+        0% {
+          transform: translate(-50%, -50%) translate(0, 0) rotate(0deg);
+          opacity: 1;
+        }
+        100% {
+          transform: translate(-50%, -50%) translate(var(--tx, 200px), var(--ty, 200px)) rotate(720deg);
+          opacity: 0;
+        }
+      }
+      .animate-confetti {
+        animation: confetti 1.5s ease-out forwards;
+      }
+      /* Mobile optimizations */
+      .touch-manipulation {
+        touch-action: manipulation;
+      }
+      .safe-area-top {
+        padding-top: env(safe-area-inset-top);
+      }
+      .safe-area-bottom {
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+      /* Prevent text selection on mobile */
+      @media (max-width: 640px) {
+        * {
+          -webkit-tap-highlight-color: transparent;
+        }
+      }
+      /* Custom breakpoint for extra small screens */
+      @media (min-width: 475px) {
+        .xs\:block { display: block; }
+        .xs\:inline { display: inline; }
+      }
     </style>
   <script type="importmap">
 {
   "imports": {
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.32.0",
     "react": "https://aistudiocdn.com/react@^19.2.1",
     "lucide-react": "https://aistudiocdn.com/lucide-react@^0.556.0",
     "react/": "https://aistudiocdn.com/react@^19.2.1/"
@@ -44,5 +165,6 @@
 </head>
   <body class="bg-slate-900 text-slate-100 antialiased overflow-y-auto selection:bg-emerald-500 selection:text-white">
     <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>

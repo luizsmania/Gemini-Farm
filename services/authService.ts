@@ -8,6 +8,7 @@ interface StoredUser {
   username: string;
   passwordHash: string; // Simple mock hash
   createdAt: number;
+  lastLoginAt?: number;
 }
 
 // Simple mock hashing (Not secure for real production, but fine for local-only demo)
@@ -19,39 +20,78 @@ export const registerUser = (username: string, password: string): { success: boo
   const usersStr = localStorage.getItem(USERS_KEY);
   const users: Record<string, StoredUser> = usersStr ? JSON.parse(usersStr) : {};
 
-  if (users[username]) {
-    return { success: false, message: "Username already exists." };
+  // Username validation
+  if (username.trim().length < 3) {
+    return { success: false, message: "Username must be at least 3 characters long." };
+  }
+  if (username.trim().length > 20) {
+    return { success: false, message: "Username must be less than 20 characters." };
+  }
+  if (!/^[a-zA-Z0-9_]+$/.test(username.trim())) {
+    return { success: false, message: "Username can only contain letters, numbers, and underscores." };
   }
 
-  if (username.length < 3) return { success: false, message: "Username too short." };
-  if (password.length < 4) return { success: false, message: "Password too short." };
+  if (users[username.trim().toLowerCase()]) {
+    return { success: false, message: "Username already exists. Please choose another." };
+  }
 
+  // Password validation
+  if (password.length < 6) {
+    return { success: false, message: "Password must be at least 6 characters long." };
+  }
+  if (password.length > 100) {
+    return { success: false, message: "Password is too long." };
+  }
+
+  const normalizedUsername = username.trim();
   const newUser: StoredUser = {
-    username,
+    username: normalizedUsername,
     passwordHash: hashPassword(password),
-    createdAt: Date.now()
+    createdAt: Date.now(),
+    lastLoginAt: Date.now()
   };
 
-  users[username] = newUser;
+  users[normalizedUsername.toLowerCase()] = newUser;
   localStorage.setItem(USERS_KEY, JSON.stringify(users));
 
-  return { success: true, message: "Account created!", user: { username, createdAt: newUser.createdAt } };
+  // Set session immediately after registration
+  localStorage.setItem(SESSION_KEY, normalizedUsername);
+
+  return { 
+    success: true, 
+    message: "Account created successfully! Welcome to Gemini Farm!", 
+    user: { username: normalizedUsername, createdAt: newUser.createdAt } 
+  };
 };
 
 export const loginUser = (username: string, password: string): { success: boolean; message: string; user?: User } => {
   const usersStr = localStorage.getItem(USERS_KEY);
   const users: Record<string, StoredUser> = usersStr ? JSON.parse(usersStr) : {};
 
-  const user = users[username];
+  const normalizedUsername = username.trim().toLowerCase();
+  const user = users[normalizedUsername];
 
-  if (!user || user.passwordHash !== hashPassword(password)) {
-    return { success: false, message: "Invalid username or password." };
+  if (!user) {
+    return { success: false, message: "Username not found. Please check your username or create an account." };
   }
 
-  // Set Session
-  localStorage.setItem(SESSION_KEY, username);
+  if (user.passwordHash !== hashPassword(password)) {
+    return { success: false, message: "Incorrect password. Please try again." };
+  }
 
-  return { success: true, message: "Welcome back!", user: { username, createdAt: user.createdAt } };
+  // Update last login time
+  user.lastLoginAt = Date.now();
+  users[normalizedUsername] = user;
+  localStorage.setItem(USERS_KEY, JSON.stringify(users));
+
+  // Set Session
+  localStorage.setItem(SESSION_KEY, user.username);
+
+  return { 
+    success: true, 
+    message: `Welcome back, ${user.username}!`, 
+    user: { username: user.username, createdAt: user.createdAt } 
+  };
 };
 
 export const logoutUser = () => {
@@ -65,9 +105,20 @@ export const checkSession = (): User | null => {
   const usersStr = localStorage.getItem(USERS_KEY);
   const users: Record<string, StoredUser> = usersStr ? JSON.parse(usersStr) : {};
   
-  const user = users[username];
+  const user = users[username.toLowerCase()];
   if (user) {
     return { username: user.username, createdAt: user.createdAt };
+  }
+  return null;
+};
+
+export const getUserInfo = (username: string): { lastLoginAt?: number; createdAt: number } | null => {
+  const usersStr = localStorage.getItem(USERS_KEY);
+  const users: Record<string, StoredUser> = usersStr ? JSON.parse(usersStr) : {};
+  
+  const user = users[username.toLowerCase()];
+  if (user) {
+    return { lastLoginAt: user.lastLoginAt, createdAt: user.createdAt };
   }
   return null;
 };

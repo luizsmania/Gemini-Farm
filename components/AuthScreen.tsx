@@ -13,12 +13,38 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    // Validation
+    if (username.trim().length < 3) {
+      setError('Username must be at least 3 characters long.');
+      return;
+    }
+
+    if (!isLogin) {
+      // Registration validation
+      if (password.length < 6) {
+        setError('Password must be at least 6 characters long.');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError('Passwords do not match.');
+        return;
+      }
+    } else {
+      // Login validation
+      if (password.length < 4) {
+        setError('Password is required.');
+        return;
+      }
+    }
+
     setLoading(true);
 
     // Simulate network delay for realism
@@ -70,7 +96,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
             </div>
 
             <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Password</label>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                    Password {!isLogin && <span className="text-slate-500 normal-case">(min. 6 characters)</span>}
+                </label>
                 <div className="relative">
                     <Lock className="absolute left-3 top-3 text-slate-500" size={18} />
                     <input 
@@ -80,9 +108,31 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
                         className="w-full bg-slate-800 border border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-slate-200 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
                         placeholder="••••••••"
                         required
+                        minLength={isLogin ? 4 : 6}
                     />
                 </div>
             </div>
+
+            {!isLogin && (
+                <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Confirm Password</label>
+                    <div className="relative">
+                        <Lock className="absolute left-3 top-3 text-slate-500" size={18} />
+                        <input 
+                            type="password" 
+                            value={confirmPassword}
+                            onChange={(e) => setConfirmPassword(e.target.value)}
+                            className="w-full bg-slate-800 border border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-slate-200 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
+                            placeholder="••••••••"
+                            required
+                            minLength={6}
+                        />
+                    </div>
+                    {confirmPassword && password !== confirmPassword && (
+                        <p className="text-xs text-red-400 mt-1">Passwords do not match</p>
+                    )}
+                </div>
+            )}
 
             {error && (
                 <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm text-center">
@@ -106,7 +156,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
             <p className="text-slate-500 text-sm">
                 {isLogin ? "New to the farm?" : "Already have a farm?"}
                 <button 
-                    onClick={() => { setIsLogin(!isLogin); setError(''); }}
+                    onClick={() => { 
+                        setIsLogin(!isLogin); 
+                        setError(''); 
+                        setPassword('');
+                        setConfirmPassword('');
+                    }}
                     className="ml-2 text-emerald-400 hover:text-emerald-300 font-bold transition-colors"
                 >
                     {isLogin ? "Sign Up" : "Login"}

@@ -1,5 +1,5 @@
 
-import { CropData, CropId, ProductData, ProductId, BuildingData, BuildingId, Season, DecorationId, DecorationData } from './types';
+import { CropData, CropId, ProductData, ProductId, BuildingData, BuildingId, Season, DecorationId, DecorationData, Mission, Achievement } from './types';
 
 export const CROPS: Record<CropId, CropData> = {
   [CropId.WHEAT]: {
@@ -12,7 +12,7 @@ export const CROPS: Record<CropId, CropData> = {
     growTimeMs: 3000,
     color: 'bg-yellow-200',
     unlockLevel: 1,
-    xpReward: 5,
+    xpReward: 3, // Reduced from 5
     seasonAffinity: 'spring'
   },
   [CropId.CORN]: {
@@ -25,7 +25,7 @@ export const CROPS: Record<CropId, CropData> = {
     growTimeMs: 8000,
     color: 'bg-yellow-400',
     unlockLevel: 2,
-    xpReward: 12,
+    xpReward: 8, // Reduced from 12
     seasonAffinity: 'summer'
   },
   [CropId.CARROT]: {
@@ -38,7 +38,7 @@ export const CROPS: Record<CropId, CropData> = {
     growTimeMs: 15000,
     color: 'bg-orange-400',
     unlockLevel: 4,
-    xpReward: 25,
+    xpReward: 15, // Reduced from 25
     seasonAffinity: 'spring'
   },
   [CropId.TOMATO]: {
@@ -51,7 +51,7 @@ export const CROPS: Record<CropId, CropData> = {
     growTimeMs: 30000,
     color: 'bg-red-500',
     unlockLevel: 6,
-    xpReward: 60,
+    xpReward: 35, // Reduced from 60
     seasonAffinity: 'summer'
   },
   [CropId.PUMPKIN]: {
@@ -64,7 +64,7 @@ export const CROPS: Record<CropId, CropData> = {
     growTimeMs: 60000,
     color: 'bg-orange-600',
     unlockLevel: 9,
-    xpReward: 150,
+    xpReward: 80, // Reduced from 150
     seasonAffinity: 'autumn'
   },
   [CropId.GEMINI_FRUIT]: {
@@ -77,7 +77,7 @@ export const CROPS: Record<CropId, CropData> = {
     growTimeMs: 120000,
     color: 'bg-purple-500',
     unlockLevel: 12,
-    xpReward: 500,
+    xpReward: 200, // Reduced from 500
     seasonAffinity: 'winter'
   }
 };
@@ -140,11 +140,11 @@ export const DECORATIONS: Record<DecorationId, DecorationData> = {
 export const GRID_SIZE = 6;
 export const MAX_PLOTS = 36; // 6x6 grid
 export const INITIAL_PLOTS = 6;
-export const PLOT_COST_BASE = 100;
-export const PLOT_COST_MULTIPLIER = 1.5;
-export const SPRINKLER_COST = 500;
+export const PLOT_COST_BASE = 150; // Increased from 100
+export const PLOT_COST_MULTIPLIER = 1.8; // Increased from 1.5
+export const SPRINKLER_COST = 750; // Increased from 500
 
-export const INITIAL_COINS = 50;
+export const INITIAL_COINS = 30; // Reduced from 50
 
 export const INITIAL_INVENTORY: Record<string, number> = {
   [CropId.WHEAT]: 5,
@@ -170,6 +170,348 @@ export const INITIAL_HARVESTED: Record<string, number> = {
   [ProductId.STAR_JAM]: 0,
 };
 
-export const XP_TO_LEVEL_UP = (level: number) => Math.floor(100 * Math.pow(1.5, level - 1));
+export const XP_TO_LEVEL_UP = (level: number) => Math.floor(150 * Math.pow(1.8, level - 1)); // Much harder progression
 
 export const SEASON_DURATION_MS = 1000 * 60 * 5;
+
+// Mission and Achievement Definitions
+
+export const INITIAL_MISSIONS: Mission[] = [
+  // Tier 1 - Beginner
+  {
+    id: 'harvest_10_wheat',
+    title: 'First Harvest',
+    description: 'Harvest 10 Wheat',
+    type: 'harvest',
+    target: 10,
+    current: 0,
+    rewardCoins: 50,
+    rewardXp: 25,
+    itemId: CropId.WHEAT,
+    tier: 1,
+    completed: false,
+    unlocked: true
+  },
+  {
+    id: 'earn_100',
+    title: 'First Earnings',
+    description: 'Earn 100 coins total',
+    type: 'earn',
+    target: 100,
+    current: 0,
+    rewardCoins: 30,
+    rewardXp: 20,
+    tier: 1,
+    completed: false,
+    unlocked: true
+  },
+  {
+    id: 'level_3',
+    title: 'Growing Strong',
+    description: 'Reach level 3',
+    type: 'level',
+    target: 3,
+    current: 1,
+    rewardCoins: 100,
+    rewardXp: 50,
+    tier: 1,
+    completed: false,
+    unlocked: true
+  },
+  // Tier 2 - Intermediate
+  {
+    id: 'harvest_50_crops',
+    title: 'Busy Farmer',
+    description: 'Harvest 50 crops total',
+    type: 'harvest',
+    target: 50,
+    current: 0,
+    rewardCoins: 200,
+    rewardXp: 100,
+    tier: 2,
+    completed: false,
+    unlocked: false
+  },
+  {
+    id: 'build_windmill',
+    title: 'Industrial Revolution',
+    description: 'Build your first Windmill',
+    type: 'build',
+    target: 1,
+    current: 0,
+    rewardCoins: 150,
+    rewardXp: 75,
+    buildingId: BuildingId.WINDMILL,
+    tier: 2,
+    completed: false,
+    unlocked: false
+  },
+  {
+    id: 'earn_1000',
+    title: 'Making Money',
+    description: 'Earn 1000 coins total',
+    type: 'earn',
+    target: 1000,
+    current: 0,
+    rewardCoins: 300,
+    rewardXp: 150,
+    tier: 2,
+    completed: false,
+    unlocked: false
+  },
+  // Tier 3 - Advanced
+  {
+    id: 'level_10',
+    title: 'Expert Farmer',
+    description: 'Reach level 10',
+    type: 'level',
+    target: 10,
+    current: 1,
+    rewardCoins: 500,
+    rewardXp: 250,
+    tier: 3,
+    completed: false,
+    unlocked: false
+  },
+  {
+    id: 'harvest_200_crops',
+    title: 'Harvest Master',
+    description: 'Harvest 200 crops total',
+    type: 'harvest',
+    target: 200,
+    current: 0,
+    rewardCoins: 400,
+    rewardXp: 200,
+    tier: 3,
+    completed: false,
+    unlocked: false
+  },
+  {
+    id: 'build_all',
+    title: 'Master Builder',
+    description: 'Build all 3 building types',
+    type: 'build',
+    target: 3,
+    current: 0,
+    rewardCoins: 1000,
+    rewardXp: 500,
+    tier: 3,
+    completed: false,
+    unlocked: false
+  },
+  // Tier 4 - Expert
+  {
+    id: 'level_20',
+    title: 'Legendary Farmer',
+    description: 'Reach level 20',
+    type: 'level',
+    target: 20,
+    current: 1,
+    rewardCoins: 2000,
+    rewardXp: 1000,
+    tier: 4,
+    completed: false,
+    unlocked: false
+  },
+  {
+    id: 'earn_10000',
+    title: 'Wealthy Landowner',
+    description: 'Earn 10,000 coins total',
+    type: 'earn',
+    target: 10000,
+    current: 0,
+    rewardCoins: 1500,
+    rewardXp: 750,
+    tier: 4,
+    completed: false,
+    unlocked: false
+  },
+  {
+    id: 'harvest_1000',
+    title: 'Harvest Legend',
+    description: 'Harvest 1000 crops total',
+    type: 'harvest',
+    target: 1000,
+    current: 0,
+    rewardCoins: 2000,
+    rewardXp: 1000,
+    tier: 4,
+    completed: false,
+    unlocked: false
+  },
+  // Tier 5 - Master
+  {
+    id: 'level_30',
+    title: 'Farming Deity',
+    description: 'Reach level 30',
+    type: 'level',
+    target: 30,
+    current: 1,
+    rewardCoins: 5000,
+    rewardXp: 2500,
+    tier: 5,
+    completed: false,
+    unlocked: false
+  },
+  {
+    id: 'earn_50000',
+    title: 'Millionaire',
+    description: 'Earn 50,000 coins total',
+    type: 'earn',
+    target: 50000,
+    current: 0,
+    rewardCoins: 5000,
+    rewardXp: 2500,
+    tier: 5,
+    completed: false,
+    unlocked: false
+  },
+  {
+    id: 'max_plots',
+    title: 'Land Baron',
+    description: 'Own all 36 plots',
+    type: 'collect',
+    target: 36,
+    current: 6,
+    rewardCoins: 3000,
+    rewardXp: 1500,
+    tier: 5,
+    completed: false,
+    unlocked: false
+  }
+];
+
+export const INITIAL_ACHIEVEMENTS: Achievement[] = [
+  {
+    id: 'first_harvest',
+    title: 'First Steps',
+    description: 'Harvest your first crop',
+    icon: '🌱',
+    requirement: 1,
+    current: 0,
+    rewardCoins: 20,
+    rewardXp: 10,
+    unlocked: false,
+    category: 'harvest'
+  },
+  {
+    id: 'harvest_100',
+    title: 'Century Harvest',
+    description: 'Harvest 100 crops',
+    icon: '🌾',
+    requirement: 100,
+    current: 0,
+    rewardCoins: 100,
+    rewardXp: 50,
+    unlocked: false,
+    category: 'harvest'
+  },
+  {
+    id: 'harvest_500',
+    title: 'Harvest Hero',
+    description: 'Harvest 500 crops',
+    icon: '⭐',
+    requirement: 500,
+    current: 0,
+    rewardCoins: 500,
+    rewardXp: 250,
+    unlocked: false,
+    category: 'harvest'
+  },
+  {
+    id: 'earn_500',
+    title: 'Small Fortune',
+    description: 'Earn 500 coins',
+    icon: '💰',
+    requirement: 500,
+    current: 0,
+    rewardCoins: 50,
+    rewardXp: 25,
+    unlocked: false,
+    category: 'money'
+  },
+  {
+    id: 'earn_5000',
+    title: 'Big Spender',
+    description: 'Earn 5,000 coins',
+    icon: '💎',
+    requirement: 5000,
+    current: 0,
+    rewardCoins: 300,
+    rewardXp: 150,
+    unlocked: false,
+    category: 'money'
+  },
+  {
+    id: 'level_5',
+    title: 'Rising Star',
+    description: 'Reach level 5',
+    icon: '⭐',
+    requirement: 5,
+    current: 1,
+    rewardCoins: 100,
+    rewardXp: 50,
+    unlocked: false,
+    category: 'level'
+  },
+  {
+    id: 'level_15',
+    title: 'Veteran',
+    description: 'Reach level 15',
+    icon: '🏆',
+    requirement: 15,
+    current: 1,
+    rewardCoins: 500,
+    rewardXp: 250,
+    unlocked: false,
+    category: 'level'
+  },
+  {
+    id: 'level_25',
+    title: 'Master',
+    description: 'Reach level 25',
+    icon: '👑',
+    requirement: 25,
+    current: 1,
+    rewardCoins: 1000,
+    rewardXp: 500,
+    unlocked: false,
+    category: 'level'
+  },
+  {
+    id: 'build_5',
+    title: 'Architect',
+    description: 'Build 5 buildings',
+    icon: '🏗️',
+    requirement: 5,
+    current: 0,
+    rewardCoins: 200,
+    rewardXp: 100,
+    unlocked: false,
+    category: 'buildings'
+  },
+  {
+    id: 'decorate_10',
+    title: 'Decorator',
+    description: 'Place 10 decorations',
+    icon: '🎨',
+    requirement: 10,
+    current: 0,
+    rewardCoins: 150,
+    rewardXp: 75,
+    unlocked: false,
+    category: 'decorations'
+  },
+  {
+    id: 'complete_10_quests',
+    title: 'Quest Master',
+    description: 'Complete 10 quests',
+    icon: '📜',
+    requirement: 10,
+    current: 0,
+    rewardCoins: 300,
+    rewardXp: 150,
+    unlocked: false,
+    category: 'special'
+  }
+];

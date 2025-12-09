@@ -102,9 +102,10 @@ export interface Plot {
 
 export interface Decoration {
   id: string; // Unique instance ID
-  x: number;
-  y: number;
+  x: number; // Grid position (can overlap with plots)
+  y: number; // Grid position (can overlap with plots)
   typeId: DecorationId;
+  layer: 'ground' | 'overlay'; // ground = under plots, overlay = above plots
 }
 
 export interface Quest {
@@ -134,6 +135,11 @@ export interface GameState {
   weather: Weather;
   season: Season;
   nextSeasonAt: number;
+  missions: Mission[];
+  achievements: Achievement[];
+  statistics: Statistics;
+  dailyChallenge: DailyChallenge | null;
+  lastDailyChallengeReset: number;
 }
 
 export interface MarketTrend {
@@ -156,4 +162,59 @@ export interface EditDragItem {
   id: number | string;
   startX: number;
   startY: number;
+}
+
+export interface Mission {
+  id: string;
+  title: string;
+  description: string;
+  type: 'harvest' | 'sell' | 'level' | 'build' | 'earn' | 'collect';
+  target: number;
+  current: number;
+  rewardCoins: number;
+  rewardXp: number;
+  itemId?: string; // For harvest/sell/collect missions
+  buildingId?: BuildingId; // For build missions
+  tier: number; // 1-5 difficulty
+  completed: boolean;
+  unlocked: boolean;
+}
+
+export interface Achievement {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  requirement: number;
+  current: number;
+  rewardCoins: number;
+  rewardXp: number;
+  unlocked: boolean;
+  category: 'harvest' | 'money' | 'level' | 'buildings' | 'decorations' | 'special';
+}
+
+export interface Statistics {
+  totalHarvested: Record<string, number>;
+  totalEarned: number;
+  totalSpent: number;
+  cropsPlanted: number;
+  buildingsBuilt: number;
+  decorationsPlaced: number;
+  questsCompleted: number;
+  missionsCompleted: number;
+  playTime: number; // in seconds
+  levelReached: number;
+  highestCoins: number;
+}
+
+export interface DailyChallenge {
+  id: string;
+  title: string;
+  description: string;
+  type: 'harvest' | 'sell' | 'earn';
+  target: number;
+  current: number;
+  rewardMultiplier: number; // Bonus XP/coins multiplier
+  expiresAt: number;
+  completed: boolean;
 }
