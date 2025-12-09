@@ -17,7 +17,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -47,11 +47,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
 
     setLoading(true);
 
-    // Simulate network delay for realism
-    setTimeout(() => {
+    try {
       const result = isLogin 
-        ? loginUser(username, password)
-        : registerUser(username, password);
+        ? await loginUser(username, password)
+        : await registerUser(username, password);
 
       if (result.success && result.user) {
         onSuccess(result.user);
@@ -59,7 +58,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
         setError(result.message);
         setLoading(false);
       }
-    }, 800);
+    } catch (error) {
+      setError('An error occurred. Please try again.');
+      setLoading(false);
+    }
   };
 
   return (

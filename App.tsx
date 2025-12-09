@@ -167,84 +167,125 @@ const App: React.FC = () => {
   useEffect(() => {
     if (currentUser) {
         setIsLoadingSave(true);
-        const saveKey = `gemini_farm_save_${currentUser.username}`;
-        try {
-            const saved = localStorage.getItem(saveKey);
-            if (saved) {
-                const parsed = JSON.parse(saved);
+        const loadData = async () => {
+            try {
+                // Try to load from database first
+                const { loadGameState, saveGameState } = await import('./services/databaseService');
+                let parsed = await loadGameState(currentUser.username);
                 
-                // MIGRATION LOGIC
-                let plots = parsed.plots || [];
-                // If plots are old format (no x,y), lay them out on grid
-                if (plots.length > 0 && typeof plots[0].x === 'undefined') {
-                    plots = plots.map((p: any, i: number) => ({
-                        ...p,
-                        x: i % GRID_SIZE,
-                        y: Math.floor(i / GRID_SIZE)
-                    }));
+                // Fallback to localStorage if database doesn't have data
+                if (!parsed) {
+                    const saveKey = `gemini_farm_save_${currentUser.username}`;
+                    const saved = localStorage.getItem(saveKey);
+                    if (saved) {
+                        parsed = JSON.parse(saved);
+                        // Migrate to database
+                        if (parsed) {
+                            await saveGameState(currentUser.username, parsed);
+                        }
+                    }
                 }
                 
-                setGameState({
-                    ...createDefaultGameState(),
-                    ...parsed,
-                    inventory: { ...INITIAL_INVENTORY, ...parsed.inventory },
-                    harvested: { ...INITIAL_HARVESTED, ...parsed.harvested },
-                    decorations: (parsed.decorations || []).map((d: any) => ({
-                        ...d,
-                        layer: d.layer || (DECORATIONS[d.typeId]?.type === 'walkable' ? 'ground' : 'overlay')
-                    })),
-                    plots: plots.map((p: any) => ({
-                        ...p,
-                        isWatered: p.isWatered ?? false,
-                        hasSprinkler: p.hasSprinkler ?? false,
-                        status: p.status === 'building' ? 'building' : p.status
-                    })),
-                    missions: parsed.missions || initializeMissions(),
-                    achievements: parsed.achievements || initializeAchievements(),
-                    statistics: parsed.statistics || initializeStatistics(),
-                    dailyChallenge: parsed.dailyChallenge || null,
-                    lastDailyChallengeReset: parsed.lastDailyChallengeReset || Date.now()
-                });
-            } else {
-                // Initialize default plots in a grid for new users
-                const initialPlots: PlotType[] = [];
-                for (let i = 0; i < INITIAL_PLOTS; i++) {
-                    initialPlots.push({
-                        id: i,
-                        x: i % 3 + 1, 
-                        y: Math.floor(i / 3) + 1,
-                        status: 'empty',
-                        cropId: null,
-                        buildingId: null,
-                        plantedAt: null,
-                        isWatered: false,
-                        hasSprinkler: false
+                if (parsed) {
+                    // MIGRATION LOGIC
+                    let plots = parsed.plots || [];
+                    // If plots are old format (no x,y), lay them out on grid
+                    if (plots.length > 0 && typeof plots[0].x === 'undefined') {
+                        plots = plots.map((p: any, i: number) => ({
+                            ...p,
+                            x: i % GRID_SIZE,
+                            y: Math.floor(i / GRID_SIZE)
+                        }));
+                    }
+                    
+                    setGameState({
+                        ...createDefaultGameState(),
+                        ...parsed,
+                        inventory: { ...INITIAL_INVENTORY, ...parsed.inventory },
+                        harvested: { ...INITIAL_HARVESTED, ...parsed.harvested },
+                        decorations: (parsed.decorations || []).map((d: any) => ({
+                            ...d,
+                            layer: d.layer || (DECORATIONS[d.typeId]?.type === 'walkable' ? 'ground' : 'overlay')
+                        })),
+                        plots: plots.map((p: any) => ({
+                            ...p,
+                            isWatered: p.isWatered ?? false,
+                            hasSprinkler: p.hasSprinkler ?? false,
+                            status: p.status === 'building' ? 'building' : p.status
+                        })),
+                        missions: parsed.missions || initializeMissions(),
+                        achievements: parsed.achievements || initializeAchievements(),
+                        statistics: parsed.statistics || initializeStatistics(),
+                        dailyChallenge: parsed.dailyChallenge || null,
+                        lastDailyChallengeReset: parsed.lastDailyChallengeReset || Date.now()
                     });
+                } else {
+                    // Initialize default plots in a grid for new users
+                    const initialPlots: PlotType[] = [];
+                    for (let i = 0; i < INITIAL_PLOTS; i++) {
+                        initialPlots.push({
+                            id: i,
+                            x: i % 3 + 1, 
+                            y: Math.floor(i / 3) + 1,
+                            status: 'empty',
+                            cropId: null,
+                            buildingId: null,
+                            plantedAt: null,
+                            isWatered: false,
+                            hasSprinkler: false
+                        });
+                    }
+                    const newState = createDefaultGameState();
+                    newState.plots = initialPlots;
+                    newState.dailyChallenge = generateDailyChallenge();
+                    setGameState(newState);
+                    
+                    // Save initial state to database
+                    await saveGameState(currentUser.username, newState);
                 }
-                const newState = createDefaultGameState();
-                newState.plots = initialPlots;
-                newState.dailyChallenge = generateDailyChallenge();
-                setGameState(newState);
+            } catch (e) {
+                console.error("Save load error", e);
+                setGameState(createDefaultGameState());
+            } finally {
+                setIsLoadingSave(false);
             }
-        } catch (e) {
-            console.error("Save load error", e);
-            setGameState(createDefaultGameState());
-        } finally {
-            setIsLoadingSave(false);
-        }
+        };
+        
+        loadData();
     }
   }, [currentUser]);
 
   // Save Data
   useEffect(() => {
     if (currentUser) {
-        const saveKey = `gemini_farm_save_${currentUser.username}`;
-        try {
-            localStorage.setItem(saveKey, JSON.stringify(gameState));
-            setLastSaveTime(Date.now());
-        } catch (e) {
-            console.error("Failed to save game state:", e);
-        }
+        const saveData = async () => {
+            try {
+                // Save to database
+                const { saveGameState } = await import('./services/databaseService');
+                const saved = await saveGameState(currentUser.username, gameState);
+                
+                if (saved) {
+                    setLastSaveTime(Date.now());
+                    // Also save to localStorage as backup
+                    const saveKey = `gemini_farm_save_${currentUser.username}`;
+                    localStorage.setItem(saveKey, JSON.stringify(gameState));
+                }
+            } catch (e) {
+                console.error("Failed to save game state:", e);
+                // Fallback to localStorage
+                try {
+                    const saveKey = `gemini_farm_save_${currentUser.username}`;
+                    localStorage.setItem(saveKey, JSON.stringify(gameState));
+                    setLastSaveTime(Date.now());
+                } catch (localError) {
+                    console.error("Failed to save to localStorage:", localError);
+                }
+            }
+        };
+        
+        // Debounce saves to avoid too many API calls
+        const timeoutId = setTimeout(saveData, 1000);
+        return () => clearTimeout(timeoutId);
     }
   }, [gameState, currentUser]);
 
@@ -1395,7 +1436,49 @@ const App: React.FC = () => {
                                  if(found) break;
                              }
                              if(found) {
-                                 setGameState(p => ({ ...p, coins: p.coins - cost, plots: [...p.plots, { id: Date.now(), x: newX, y: newY, status: 'empty', cropId: null, buildingId: null, plantedAt: null, isWatered: false, hasSprinkler: false }] }));
+                                 const newPlot = { id: Date.now(), x: newX, y: newY, status: 'empty' as const, cropId: null, buildingId: null, plantedAt: null, isWatered: false, hasSprinkler: false };
+                                 setGameState(p => ({ 
+                                     ...p, 
+                                     coins: p.coins - cost, 
+                                     plots: [...p.plots, newPlot],
+                                     statistics: {
+                                         ...p.statistics,
+                                         plotsOwned: Math.max(p.statistics.plotsOwned || 0, p.plots.length + 1)
+                                     }
+                                 }));
+                                 
+                                 // Show notification
+                                 showNotification({
+                                     type: 'success',
+                                     title: 'Plot Purchased!',
+                                     message: `New plot added for ${cost} coins`,
+                                     duration: 2000
+                                 });
+                             } else {
+                                 // Show warning if no space found
+                                 showNotification({
+                                     type: 'warning',
+                                     title: 'No Space',
+                                     message: 'Could not find an empty spot for the new plot',
+                                     duration: 2000
+                                 });
+                             }
+                         } else {
+                             // Show warning if can't afford or max plots
+                             if (gameState.plots.length >= MAX_PLOTS) {
+                                 showNotification({
+                                     type: 'warning',
+                                     title: 'Max Plots Reached',
+                                     message: `You've reached the maximum of ${MAX_PLOTS} plots`,
+                                     duration: 2000
+                                 });
+                             } else if (gameState.coins < cost) {
+                                 showNotification({
+                                     type: 'warning',
+                                     title: 'Not Enough Coins',
+                                     message: `You need ${cost} coins but only have ${gameState.coins}`,
+                                     duration: 2000
+                                 });
                              }
                          }
                     }}

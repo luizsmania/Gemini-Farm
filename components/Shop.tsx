@@ -39,25 +39,39 @@ export const Shop: React.FC<ShopProps> = ({
                 <LandPlot className="text-indigo-400" size={18} /> New Plot
             </h3>
             <p className="text-indigo-200/60 text-xs mt-1 mb-4">Current: {plotCount} Plots</p>
-            <Button 
+            <button
                 onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    onBuyPlot();
+                    // Always check conditions, don't rely on disabled state
+                    const currentCost = Math.floor(PLOT_COST_BASE * Math.pow(PLOT_COST_MULTIPLIER, plotCount - 6));
+                    if (!isMaxPlots && coins >= currentCost && plotCount < MAX_PLOTS) {
+                        onBuyPlot();
+                    }
+                }}
+                onTouchStart={(e) => {
+                    // Prevent default to avoid double-tap zoom and other issues
+                    e.preventDefault();
                 }}
                 onTouchEnd={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    if (!isMaxPlots && coins >= nextPlotCost) {
+                    // Always check conditions, don't rely on disabled state
+                    const currentCost = Math.floor(PLOT_COST_BASE * Math.pow(PLOT_COST_MULTIPLIER, plotCount - 6));
+                    if (!isMaxPlots && coins >= currentCost && plotCount < MAX_PLOTS) {
                         onBuyPlot();
                     }
                 }}
                 disabled={isMaxPlots || coins < nextPlotCost}
-                variant={isMaxPlots ? "ghost" : "primary"}
-                className="w-full text-xs touch-manipulation"
+                className={`w-full text-xs touch-manipulation inline-flex items-center justify-center rounded-xl font-bold transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] ${
+                    isMaxPlots 
+                        ? "bg-transparent hover:bg-white/5 text-slate-300 hover:text-white" 
+                        : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/20 focus:ring-emerald-500 border-t border-white/10"
+                } px-3 py-1.5`}
+                style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
             >
                 {isMaxPlots ? "Max Size" : `${nextPlotCost} Coins`}
-            </Button>
+            </button>
         </div>
 
         {/* Sprinkler Upgrade */}

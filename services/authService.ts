@@ -1,22 +1,36 @@
 
 import { User } from "../types";
+import { registerUserAPI, loginUserAPI } from "./databaseService";
 
-const USERS_KEY = 'gemini_farm_users';
 const SESSION_KEY = 'gemini_farm_session';
+
+// Use database API for registration
+export const registerUser = async (username: string, password: string): Promise<{ success: boolean; message: string; user?: User }> => {
+  const result = await registerUserAPI(username, password);
+  
+  if (result.success && result.user) {
+    // Set session
+    localStorage.setItem(SESSION_KEY, result.user.username);
+  }
+  
+  return result;
+};
+
+// Legacy localStorage fallback (for backward compatibility)
+const USERS_KEY = 'gemini_farm_users';
 
 interface StoredUser {
   username: string;
-  passwordHash: string; // Simple mock hash
+  passwordHash: string;
   createdAt: number;
   lastLoginAt?: number;
 }
 
-// Simple mock hashing (Not secure for real production, but fine for local-only demo)
 const hashPassword = (password: string) => {
   return btoa(password + "_salt_gemini");
 };
 
-export const registerUser = (username: string, password: string): { success: boolean; message: string; user?: User } => {
+export const registerUserLocal = (username: string, password: string): { success: boolean; message: string; user?: User } => {
   const usersStr = localStorage.getItem(USERS_KEY);
   const users: Record<string, StoredUser> = usersStr ? JSON.parse(usersStr) : {};
 
@@ -64,7 +78,20 @@ export const registerUser = (username: string, password: string): { success: boo
   };
 };
 
-export const loginUser = (username: string, password: string): { success: boolean; message: string; user?: User } => {
+// Use database API for login
+export const loginUser = async (username: string, password: string): Promise<{ success: boolean; message: string; user?: User }> => {
+  const result = await loginUserAPI(username, password);
+  
+  if (result.success && result.user) {
+    // Set session
+    localStorage.setItem(SESSION_KEY, result.user.username);
+  }
+  
+  return result;
+};
+
+// Legacy localStorage fallback
+export const loginUserLocal = (username: string, password: string): { success: boolean; message: string; user?: User } => {
   const usersStr = localStorage.getItem(USERS_KEY);
   const users: Record<string, StoredUser> = usersStr ? JSON.parse(usersStr) : {};
 
