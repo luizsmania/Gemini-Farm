@@ -834,9 +834,17 @@ const App: React.FC = () => {
 
   // --- Global Mouse/Touch Up ---
   useEffect(() => {
-    const handleWindowUp = () => { setIsDragging(false); setDragAction(null); };
+    const handleWindowUp = (e: MouseEvent | TouchEvent) => {
+      // Don't interfere with button clicks or other interactive elements
+      const target = e.target as HTMLElement;
+      if (target.closest('button') || target.closest('[role="button"]') || target.closest('input') || target.closest('textarea')) {
+        return;
+      }
+      setIsDragging(false); 
+      setDragAction(null);
+    };
     window.addEventListener('mouseup', handleWindowUp);
-    window.addEventListener('touchend', handleWindowUp);
+    window.addEventListener('touchend', handleWindowUp, { passive: true });
     return () => {
       window.removeEventListener('mouseup', handleWindowUp);
       window.removeEventListener('touchend', handleWindowUp);
@@ -1109,11 +1117,18 @@ const App: React.FC = () => {
                     }
                   }
                   
+                  const handleTabClick = (e: React.MouseEvent | React.TouchEvent) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setActiveTab(tab.id as Tab);
+                  };
+                  
                   return (
                     <button
                       key={tab.id}
-                      onClick={() => setActiveTab(tab.id as Tab)}
-                      className={`relative py-2 sm:py-3 text-xs sm:text-sm font-medium flex items-center gap-1 sm:gap-2 transition-colors whitespace-nowrap ${activeTab === tab.id ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200'}`}
+                      onClick={handleTabClick}
+                      onTouchEnd={handleTabClick}
+                      className={`relative py-2 sm:py-3 text-xs sm:text-sm font-medium flex items-center gap-1 sm:gap-2 transition-colors whitespace-nowrap touch-manipulation ${activeTab === tab.id ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200'}`}
                     >
                       <tab.icon size={14} /> <span className="hidden xs:inline">{tab.label}</span> {badge}
                       {activeTab === tab.id && <div className="absolute bottom-0 inset-x-0 h-0.5 bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.5)]" />}
@@ -1263,6 +1278,7 @@ const App: React.FC = () => {
                     coins={gameState.coins} 
                     level={gameState.level} 
                     plotCount={gameState.plots.length}
+                    inventory={gameState.inventory}
                     onBuySeed={(id, amt) => {
                          const cost = CROPS[id].buyPrice * amt;
                          if (gameState.coins >= cost) setGameState(p => ({ ...p, coins: p.coins - cost, inventory: { ...p.inventory, [id]: (p.inventory[id]||0) + amt } }));
@@ -1293,7 +1309,7 @@ const App: React.FC = () => {
             )}
 
             {activeTab === 'market' && (
-                 <div className="space-y-4">
+                 <div className="space-y-4 relative z-10">
                      <div className="mb-4">
                          <h2 className="text-2xl font-bold text-slate-200 flex items-center gap-2 mb-2">
                              <TrendingUp size={24} /> Market
@@ -1315,7 +1331,20 @@ const App: React.FC = () => {
                                      <p className="text-sm text-slate-400 mb-4">
                                          Harvest some crops first, then come back to sell them!
                                      </p>
-                                     <Button onClick={() => setActiveTab('field')} variant="primary">
+                                     <Button 
+                                         onClick={(e) => {
+                                             e.preventDefault();
+                                             e.stopPropagation();
+                                             setActiveTab('field');
+                                         }}
+                                         onTouchEnd={(e) => {
+                                             e.preventDefault();
+                                             e.stopPropagation();
+                                             setActiveTab('field');
+                                         }}
+                                         variant="primary"
+                                         className="touch-manipulation"
+                                     >
                                          Go to Farm
                                      </Button>
                                  </div>
@@ -1328,6 +1357,18 @@ const App: React.FC = () => {
                                      const count = (gameState.harvested[item.id] || 0);
                                      const isTrending = marketTrend?.cropId === item.id;
                                      const price = isTrending && marketTrend ? Math.floor(item.baseSellPrice * marketTrend.multiplier) : item.baseSellPrice;
+                                     
+                                     const handleSellOne = (e: React.MouseEvent | React.TouchEvent) => {
+                                         e.preventDefault();
+                                         e.stopPropagation();
+                                         handleSell(item.id, 1, price);
+                                     };
+                                     
+                                     const handleSellAll = (e: React.MouseEvent | React.TouchEvent) => {
+                                         e.preventDefault();
+                                         e.stopPropagation();
+                                         handleSell(item.id, count, price);
+                                     };
                                      
                                      return (
                                         <div key={item.id} className="bg-slate-800/50 rounded-xl p-4 border border-white/5 hover:bg-slate-800/80 transition-colors">
@@ -1345,8 +1386,23 @@ const App: React.FC = () => {
                                                          {isTrending && <span className="ml-1 text-[10px] bg-emerald-500/20 px-1 rounded">HOT</span>}
                                                      </div>
                                                      <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                                                        <Button size="sm" onClick={() => handleSell(item.id, 1, price)} className="w-full sm:w-auto">Sell 1</Button>
-                                                        <Button size="sm" variant="secondary" onClick={() => handleSell(item.id, count, price)} className="w-full sm:w-auto">Sell All ({count})</Button>
+                                                        <Button 
+                                                            size="sm" 
+                                                            onClick={handleSellOne}
+                                                            onTouchEnd={handleSellOne}
+                                                            className="w-full sm:w-auto touch-manipulation"
+                                                        >
+                                                            Sell 1
+                                                        </Button>
+                                                        <Button 
+                                                            size="sm" 
+                                                            variant="secondary" 
+                                                            onClick={handleSellAll}
+                                                            onTouchEnd={handleSellAll}
+                                                            className="w-full sm:w-auto touch-manipulation"
+                                                        >
+                                                            Sell All ({count})
+                                                        </Button>
                                                      </div>
                                                 </div>
                                             </div>
