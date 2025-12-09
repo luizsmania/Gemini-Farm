@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Plot } from './components/Plot';
 import { Shop } from './components/Shop';
 import { Decoration } from './components/Decoration';
@@ -845,8 +845,8 @@ const App: React.FC = () => {
   };
   
   // Track last processed plot to prevent duplicate actions during drag
-  const lastProcessedPlotRef = React.useRef<number | null>(null);
-  const lastProcessedTimeRef = React.useRef<number>(0);
+  const lastProcessedPlotRef = useRef<number | null>(null);
+  const lastProcessedTimeRef = useRef<number>(0);
 
   // --- Global Mouse/Touch Up ---
   useEffect(() => {
