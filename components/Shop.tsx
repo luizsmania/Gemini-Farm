@@ -40,10 +40,21 @@ export const Shop: React.FC<ShopProps> = ({
             </h3>
             <p className="text-indigo-200/60 text-xs mt-1 mb-4">Current: {plotCount} Plots</p>
             <Button 
-                onClick={onBuyPlot}
+                onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onBuyPlot();
+                }}
+                onTouchEnd={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (!isMaxPlots && coins >= nextPlotCost) {
+                        onBuyPlot();
+                    }
+                }}
                 disabled={isMaxPlots || coins < nextPlotCost}
                 variant={isMaxPlots ? "ghost" : "primary"}
-                className="w-full text-xs"
+                className="w-full text-xs touch-manipulation"
             >
                 {isMaxPlots ? "Max Size" : `${nextPlotCost} Coins`}
             </Button>
@@ -59,10 +70,21 @@ export const Shop: React.FC<ShopProps> = ({
             </h3>
             <p className="text-cyan-200/60 text-xs mt-1 mb-4">Auto-waters 1 plot forever.</p>
             <Button 
-                onClick={onBuySprinkler}
+                onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onBuySprinkler();
+                }}
+                onTouchEnd={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (coins >= SPRINKLER_COST) {
+                        onBuySprinkler();
+                    }
+                }}
                 disabled={coins < SPRINKLER_COST}
                 variant="success"
-                className="w-full text-xs bg-cyan-600 hover:bg-cyan-500"
+                className="w-full text-xs bg-cyan-600 hover:bg-cyan-500 touch-manipulation"
             >
                 {SPRINKLER_COST} Coins
             </Button>
@@ -109,8 +131,46 @@ export const Shop: React.FC<ShopProps> = ({
                           In stock: {inventory[crop.id] || 0}
                         </div>
                         <div className="grid grid-cols-2 gap-2">
-                            <Button size="sm" variant="secondary" disabled={isLocked || coins < crop.buyPrice} onClick={() => onBuySeed(crop.id, 1)}>x1</Button>
-                            <Button size="sm" variant="secondary" disabled={isLocked || coins < crop.buyPrice*5} onClick={() => onBuySeed(crop.id, 5)}>x5</Button>
+                            <Button 
+                                size="sm" 
+                                variant="secondary" 
+                                disabled={isLocked || coins < crop.buyPrice} 
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    onBuySeed(crop.id, 1);
+                                }}
+                                onTouchEnd={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    if (!isLocked && coins >= crop.buyPrice) {
+                                        onBuySeed(crop.id, 1);
+                                    }
+                                }}
+                                className="touch-manipulation"
+                            >
+                                x1
+                            </Button>
+                            <Button 
+                                size="sm" 
+                                variant="secondary" 
+                                disabled={isLocked || coins < crop.buyPrice*5} 
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    onBuySeed(crop.id, 5);
+                                }}
+                                onTouchEnd={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    if (!isLocked && coins >= crop.buyPrice*5) {
+                                        onBuySeed(crop.id, 5);
+                                    }
+                                }}
+                                className="touch-manipulation"
+                            >
+                                x5
+                            </Button>
                         </div>
                     </div>
                 );
@@ -133,8 +193,19 @@ export const Shop: React.FC<ShopProps> = ({
                             fullWidth 
                             size="sm" 
                             disabled={isLocked || coins < b.cost}
-                            onClick={() => onBuyBuilding(b.id)}
-                            className={isLocked ? "" : "bg-blue-600 hover:bg-blue-500"}
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                onBuyBuilding(b.id);
+                            }}
+                            onTouchEnd={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (!isLocked && coins >= b.cost) {
+                                    onBuyBuilding(b.id);
+                                }
+                            }}
+                            className={`touch-manipulation ${isLocked ? "" : "bg-blue-600 hover:bg-blue-500"}`}
                         >
                             Build
                         </Button>
@@ -156,8 +227,19 @@ export const Shop: React.FC<ShopProps> = ({
                        fullWidth 
                        size="sm" 
                        disabled={coins < d.cost}
-                       onClick={() => onBuyDecoration(d.id)}
-                       className="bg-pink-600 hover:bg-pink-500"
+                       onClick={(e) => {
+                           e.preventDefault();
+                           e.stopPropagation();
+                           onBuyDecoration(d.id);
+                       }}
+                       onTouchEnd={(e) => {
+                           e.preventDefault();
+                           e.stopPropagation();
+                           if (coins >= d.cost) {
+                               onBuyDecoration(d.id);
+                           }
+                       }}
+                       className="bg-pink-600 hover:bg-pink-500 touch-manipulation"
                    >
                        Buy
                    </Button>

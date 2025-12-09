@@ -805,6 +805,8 @@ const App: React.FC = () => {
       if (action) {
           setIsDragging(true);
           setDragAction(action);
+          lastProcessedPlotRef.current = plotId;
+          lastProcessedTimeRef.current = Date.now();
           handleInteractPlot(plotId);
       } else {
           handleInteractPlot(plotId); 
@@ -816,21 +818,35 @@ const App: React.FC = () => {
       const plot = gameState.plots.find(p => p.id === plotId);
       if (!plot) return;
       
+      // Prevent duplicate actions on the same plot within 100ms
+      const now = Date.now();
+      if (lastProcessedPlotRef.current === plotId && (now - lastProcessedTimeRef.current) < 100) {
+          return;
+      }
+      
+      lastProcessedPlotRef.current = plotId;
+      lastProcessedTimeRef.current = now;
+      
       if (dragAction === 'harvest' && plot.status === 'ready') handleHarvest(plotId);
-      if (dragAction === 'water' && plot.status === 'growing' && !plot.isWatered) handleWater(plotId);
+      if (dragAction === 'water' && plot.status === 'growing' && !plot.isWatered && !plot.hasSprinkler) handleWater(plotId);
       if (dragAction === 'plant' && plot.status === 'empty') handlePlant(plotId);
   };
   
   const handleTouchMove = (plotId: number, event: React.TouchEvent) => {
       if (!isDragging || !dragAction || isEditMode) return;
       event.preventDefault();
+      event.stopPropagation();
       const plot = gameState.plots.find(p => p.id === plotId);
       if (!plot) return;
       
       if (dragAction === 'harvest' && plot.status === 'ready') handleHarvest(plotId);
-      if (dragAction === 'water' && plot.status === 'growing' && !plot.isWatered) handleWater(plotId);
+      if (dragAction === 'water' && plot.status === 'growing' && !plot.isWatered && !plot.hasSprinkler) handleWater(plotId);
       if (dragAction === 'plant' && plot.status === 'empty') handlePlant(plotId);
   };
+  
+  // Track last processed plot to prevent duplicate actions during drag
+  const lastProcessedPlotRef = React.useRef<number | null>(null);
+  const lastProcessedTimeRef = React.useRef<number>(0);
 
   // --- Global Mouse/Touch Up ---
   useEffect(() => {
@@ -842,12 +858,22 @@ const App: React.FC = () => {
       }
       setIsDragging(false); 
       setDragAction(null);
+      lastProcessedPlotRef.current = null;
+      lastProcessedTimeRef.current = 0;
+    };
+    const handleTouchCancel = () => {
+      setIsDragging(false);
+      setDragAction(null);
+      lastProcessedPlotRef.current = null;
+      lastProcessedTimeRef.current = 0;
     };
     window.addEventListener('mouseup', handleWindowUp);
     window.addEventListener('touchend', handleWindowUp, { passive: true });
+    window.addEventListener('touchcancel', handleTouchCancel, { passive: true });
     return () => {
       window.removeEventListener('mouseup', handleWindowUp);
       window.removeEventListener('touchend', handleWindowUp);
+      window.removeEventListener('touchcancel', handleTouchCancel);
     };
   }, []);
 
@@ -889,14 +915,18 @@ const App: React.FC = () => {
                     onMouseEnter={() => handleGridMouseEnter(x, y)}
                     onTouchStart={(e) => {
                       e.preventDefault();
+                      e.stopPropagation();
                       handleGridMouseDown(x, y);
                     }}
                     onTouchEnd={(e) => {
                       e.preventDefault();
+                      e.stopPropagation();
                       handleGridMouseUp(x, y);
                     }}
                     onTouchMove={(e) => {
+                      if (!isDragging || !dragAction || isEditMode) return;
                       e.preventDefault();
+                      e.stopPropagation();
                       const touch = e.touches[0];
                       if (touch) {
                         const element = document.elementFromPoint(touch.clientX, touch.clientY);
@@ -906,7 +936,12 @@ const App: React.FC = () => {
                             const cellId = cell.getAttribute('data-grid-cell');
                             if (cellId) {
                               const [cx, cy] = cellId.split('-').map(Number);
-                              handleGridMouseEnter(cx, cy);
+                              const plot = gameState.plots.find(p => p.x === cx && p.y === cy);
+                              if (plot) {
+                                handleMouseEnterPlot(plot.id);
+                              } else {
+                                handleGridMouseEnter(cx, cy);
+                              }
                             }
                           }
                         }
@@ -920,7 +955,9 @@ const App: React.FC = () => {
                         ${!plot && !isEditMode && selectedSeed ? 'hover:bg-emerald-500/10 hover:border-emerald-500/30 cursor-pointer active:bg-emerald-500/20' : ''}
                         ${isEditMode && plot ? 'cursor-grab active:cursor-grabbing hover:border-yellow-400/50' : ''}
                         ${plot && plot.status === 'ready' ? 'ring-2 ring-emerald-500/50' : ''}
+                        ${isDragging && dragAction ? 'touch-none' : ''}
                     `}
+                    style={{ touchAction: isDragging && dragAction ? 'none' : 'manipulation' }}
                   >
                       {/* Ground Layer Decorations (under plots) */}
                       {groundDecorations.map(decor => (
@@ -1094,7 +1131,7 @@ const App: React.FC = () => {
                     </div>
                 </div>
             </div>
-             <div className="max-w-5xl mx-auto px-2 sm:px-4 flex gap-2 sm:gap-6 overflow-x-auto no-scrollbar pb-1">
+             <div className="max-w-5xl mx-auto px-2 sm:px-4 flex gap-1 sm:gap-6 overflow-x-auto no-scrollbar pb-1">
                 {[ 
                   { id: 'field', label: 'Farm', icon: LayoutGrid }, 
                   { id: 'shop', label: 'Shop', icon: Store }, 
@@ -1128,10 +1165,17 @@ const App: React.FC = () => {
                       key={tab.id}
                       onClick={handleTabClick}
                       onTouchEnd={handleTabClick}
-                      className={`relative py-2 sm:py-3 text-xs sm:text-sm font-medium flex items-center gap-1 sm:gap-2 transition-colors whitespace-nowrap touch-manipulation ${activeTab === tab.id ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200'}`}
+                      className={`relative py-3 sm:py-3 px-3 sm:px-0 text-xs sm:text-sm font-bold flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 transition-all whitespace-nowrap touch-manipulation min-w-[60px] sm:min-w-0 rounded-lg sm:rounded-none active:scale-95 ${
+                        activeTab === tab.id 
+                          ? 'text-emerald-400 bg-emerald-500/10 sm:bg-transparent' 
+                          : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 sm:hover:bg-transparent'
+                      }`}
                     >
-                      <tab.icon size={14} /> <span className="hidden xs:inline">{tab.label}</span> {badge}
-                      {activeTab === tab.id && <div className="absolute bottom-0 inset-x-0 h-0.5 bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.5)]" />}
+                      <tab.icon size={20} className="sm:w-[14px] sm:h-[14px]" /> 
+                      <span className="hidden xs:inline text-[10px] sm:text-sm">{tab.label}</span> 
+                      {badge}
+                      {activeTab === tab.id && <div className="absolute bottom-0 inset-x-0 h-0.5 bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.5)] hidden sm:block" />}
+                      {activeTab === tab.id && <div className="absolute inset-0 rounded-lg border-2 border-emerald-400/50 sm:hidden pointer-events-none" />}
                     </button>
                   );
                 })}
@@ -1142,7 +1186,19 @@ const App: React.FC = () => {
         <main className="max-w-5xl mx-auto px-4 pt-36 pb-8 relative z-10">
             {merchantOffer && !isMerchantOpen && (
                 <div className="fixed right-4 bottom-24 z-50 animate-bounce">
-                    <button onClick={() => setIsMerchantOpen(true)} className="bg-amber-600 hover:bg-amber-500 text-white p-4 rounded-full shadow-lg border-2 border-white/20">
+                    <button 
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setIsMerchantOpen(true);
+                        }}
+                        onTouchEnd={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setIsMerchantOpen(true);
+                        }}
+                        className="bg-amber-600 hover:bg-amber-500 text-white p-4 rounded-full shadow-lg border-2 border-white/20 touch-manipulation"
+                    >
                         <MessageCircle size={24} /><div className="absolute -top-2 -right-2 bg-red-500 text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">!</div>
                     </button>
                 </div>
@@ -1177,8 +1233,22 @@ const App: React.FC = () => {
                                 {gameState.plots.length} plots • {gameState.decorations.length} decorations
                             </p>
                         </div>
-                        <Button size="sm" variant={isEditMode ? "primary" : "secondary"} onClick={() => { setIsEditMode(!isEditMode); setEditDragItem(null); }}
-                             className={isEditMode ? "bg-yellow-600 hover:bg-yellow-500 border-yellow-400" : ""}
+                        <Button 
+                            size="sm" 
+                            variant={isEditMode ? "primary" : "secondary"} 
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setIsEditMode(!isEditMode);
+                                setEditDragItem(null);
+                            }}
+                            onTouchEnd={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setIsEditMode(!isEditMode);
+                                setEditDragItem(null);
+                            }}
+                            className={`touch-manipulation ${isEditMode ? "bg-yellow-600 hover:bg-yellow-500 border-yellow-400" : ""}`}
                         >
                              {isEditMode ? <><X size={16} className="mr-2"/> Done</> : <><MousePointer2 size={16} className="mr-2"/> Edit</>}
                         </Button>
@@ -1219,8 +1289,23 @@ const App: React.FC = () => {
                               {/* Cancel Tools */}
                               {(selectedBuildingToPlace || placingSprinkler || selectedDecorationToPlace) && (
                                   <div className="flex items-center gap-2">
-                                      <button onClick={() => { setSelectedBuildingToPlace(null); setPlacingSprinkler(false); setSelectedDecorationToPlace(null); }} 
-                                        className="flex items-center gap-2 px-4 py-2 bg-red-600/20 border border-red-500 text-red-300 rounded-xl hover:bg-red-600/30 transition-colors">
+                                      <button 
+                                          onClick={(e) => {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              setSelectedBuildingToPlace(null);
+                                              setPlacingSprinkler(false);
+                                              setSelectedDecorationToPlace(null);
+                                          }}
+                                          onTouchEnd={(e) => {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              setSelectedBuildingToPlace(null);
+                                              setPlacingSprinkler(false);
+                                              setSelectedDecorationToPlace(null);
+                                          }}
+                                          className="flex items-center gap-2 px-4 py-2 bg-red-600/20 border border-red-500 text-red-300 rounded-xl hover:bg-red-600/30 transition-colors touch-manipulation"
+                                      >
                                           <X size={16}/> Cancel
                                       </button>
                                       <div className="flex items-center px-4 text-emerald-400 text-xs font-bold animate-pulse">
@@ -1240,8 +1325,17 @@ const App: React.FC = () => {
                                           return (
                                               <button
                                                   key={crop.id}
-                                                  onClick={() => setSelectedSeed(crop.id)}
-                                                  className={`relative flex flex-col items-center p-2.5 rounded-xl min-w-[75px] border-2 transition-all active:scale-95 ${
+                                                  onClick={(e) => {
+                                                      e.preventDefault();
+                                                      e.stopPropagation();
+                                                      setSelectedSeed(crop.id);
+                                                  }}
+                                                  onTouchEnd={(e) => {
+                                                      e.preventDefault();
+                                                      e.stopPropagation();
+                                                      setSelectedSeed(crop.id);
+                                                  }}
+                                                  className={`relative flex flex-col items-center p-2.5 rounded-xl min-w-[75px] border-2 transition-all active:scale-95 touch-manipulation ${
                                                       selectedSeed === crop.id 
                                                           ? 'bg-emerald-600/30 border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.4)] scale-105' 
                                                           : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20'
