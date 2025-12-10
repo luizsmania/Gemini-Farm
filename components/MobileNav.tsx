@@ -3,7 +3,7 @@ import React from 'react';
 import { LayoutGrid, Store, TrendingUp, Target, Trophy, Shield } from 'lucide-react';
 import { safePreventDefault } from '../utils/eventHelpers';
 
-type Tab = 'field' | 'shop' | 'market' | 'missions' | 'achievements';
+type Tab = 'field' | 'shop' | 'market' | 'missions' | 'achievements' | 'leaderboard';
 
 interface MobileNavProps {
   activeTab: Tab;
@@ -19,6 +19,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({ activeTab, onTabChange, is
     { id: 'market', icon: <TrendingUp size={20} />, label: 'Market' },
     { id: 'missions', icon: <Target size={20} />, label: 'Missions' },
     { id: 'achievements', icon: <Trophy size={20} />, label: 'Achievements' },
+    { id: 'leaderboard', icon: <Trophy size={20} />, label: 'Rankings' },
   ];
 
   return (

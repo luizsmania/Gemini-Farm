@@ -27,19 +27,19 @@ export const Shop: React.FC<ShopProps> = ({
   const isMaxPlots = plotCount >= MAX_PLOTS;
 
   return (
-    <div className="pb-20 space-y-8">
+    <div className="pb-20 sm:pb-8 space-y-4 sm:space-y-6 md:space-y-8">
       
       {/* Upgrades Section */}
-      <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <section className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
         {/* Land Expansion */}
-        <div className="bg-gradient-to-r from-indigo-900/50 to-slate-900/50 rounded-3xl p-6 border border-indigo-500/20 relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
-                <ArrowUpCircle size={120} />
+        <div className="bg-gradient-to-r from-indigo-900/50 to-slate-900/50 rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-indigo-500/20 relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-4 sm:p-8 opacity-5 group-hover:opacity-10 transition-opacity">
+                <ArrowUpCircle size={80} className="sm:w-[120px] sm:h-[120px]" />
             </div>
-            <h3 className="font-bold text-indigo-100 flex items-center gap-2">
-                <LandPlot className="text-indigo-400" size={18} /> New Plot
+            <h3 className="font-bold text-indigo-100 flex items-center gap-2 text-sm sm:text-base">
+                <LandPlot className="text-indigo-400" size={16} className="sm:w-[18px] sm:h-[18px]" /> New Plot
             </h3>
-            <p className="text-indigo-200/60 text-xs mt-1 mb-4">Current: {plotCount} Plots</p>
+            <p className="text-indigo-200/60 text-[10px] sm:text-xs mt-1 mb-3 sm:mb-4">Current: {plotCount} Plots</p>
             <Button
                 onClick={(e) => {
                     e.preventDefault();
@@ -61,14 +61,14 @@ export const Shop: React.FC<ShopProps> = ({
         </div>
 
         {/* Sprinkler Upgrade */}
-        <div className="bg-gradient-to-r from-cyan-900/50 to-slate-900/50 rounded-3xl p-6 border border-cyan-500/20 relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
-                <Waves size={120} />
+        <div className="bg-gradient-to-r from-cyan-900/50 to-slate-900/50 rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-cyan-500/20 relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-4 sm:p-8 opacity-5 group-hover:opacity-10 transition-opacity">
+                <Waves size={80} className="sm:w-[120px] sm:h-[120px]" />
             </div>
-            <h3 className="font-bold text-cyan-100 flex items-center gap-2">
-                <Waves className="text-cyan-400" size={18} /> Buy Sprinkler
+            <h3 className="font-bold text-cyan-100 flex items-center gap-2 text-sm sm:text-base">
+                <Waves className="text-cyan-400" size={16} className="sm:w-[18px] sm:h-[18px]" /> Buy Sprinkler
             </h3>
-            <p className="text-cyan-200/60 text-xs mt-1 mb-4">Auto-waters 1 plot forever.</p>
+            <p className="text-cyan-200/60 text-[10px] sm:text-xs mt-1 mb-3 sm:mb-4">Auto-waters 1 plot forever.</p>
             <Button 
                 onClick={(e) => {
                     e.preventDefault();
@@ -91,42 +91,42 @@ export const Shop: React.FC<ShopProps> = ({
       </section>
 
       {/* Categories */}
-      <div className="flex gap-4 border-b border-white/10 pb-1 overflow-x-auto no-scrollbar">
+      <div className="flex gap-2 sm:gap-4 border-b border-white/10 pb-1 overflow-x-auto no-scrollbar">
           <button 
             onClick={() => setActiveCategory('seeds')}
-            className={`pb-2 px-2 text-sm font-bold flex items-center gap-2 whitespace-nowrap ${activeCategory === 'seeds' ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-slate-500'}`}
+            className={`pb-2 px-2 sm:px-3 text-xs sm:text-sm font-bold flex items-center gap-1.5 sm:gap-2 whitespace-nowrap flex-shrink-0 ${activeCategory === 'seeds' ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-slate-500'}`}
           >
-            <Sprout size={16} /> Seeds
+            <Sprout size={14} className="sm:w-4 sm:h-4" /> Seeds
           </button>
           <button 
             onClick={() => setActiveCategory('buildings')}
-            className={`pb-2 px-2 text-sm font-bold flex items-center gap-2 whitespace-nowrap ${activeCategory === 'buildings' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-slate-500'}`}
+            className={`pb-2 px-2 sm:px-3 text-xs sm:text-sm font-bold flex items-center gap-1.5 sm:gap-2 whitespace-nowrap flex-shrink-0 ${activeCategory === 'buildings' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-slate-500'}`}
           >
-            <Factory size={16} /> Buildings
+            <Factory size={14} className="sm:w-4 sm:h-4" /> Buildings
           </button>
           <button 
             onClick={() => setActiveCategory('decor')}
-            className={`pb-2 px-2 text-sm font-bold flex items-center gap-2 whitespace-nowrap ${activeCategory === 'decor' ? 'text-pink-400 border-b-2 border-pink-400' : 'text-slate-500'}`}
+            className={`pb-2 px-2 sm:px-3 text-xs sm:text-sm font-bold flex items-center gap-1.5 sm:gap-2 whitespace-nowrap flex-shrink-0 ${activeCategory === 'decor' ? 'text-pink-400 border-b-2 border-pink-400' : 'text-slate-500'}`}
           >
-            <Flower size={16} /> Decor
+            <Flower size={14} className="sm:w-4 sm:h-4" /> Decor
           </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
           {activeCategory === 'seeds' && Object.values(CROPS).map((crop) => {
                 const isLocked = level < crop.unlockLevel;
                 return (
-                    <div key={crop.id} className={`bg-[#1e293b]/60 backdrop-blur-md rounded-2xl p-5 border transition-all ${isLocked ? 'border-slate-700 opacity-70' : 'border-white/5 hover:border-emerald-500/30'}`}>
+                    <div key={crop.id} className={`bg-[#1e293b]/60 backdrop-blur-md rounded-xl sm:rounded-2xl p-3 sm:p-4 md:p-5 border transition-all ${isLocked ? 'border-slate-700 opacity-70' : 'border-white/5 hover:border-emerald-500/30'}`}>
                         <div className="flex justify-between items-start mb-2">
-                            <div className={`w-12 h-12 rounded-xl ${crop.color} flex items-center justify-center text-2xl`}>{crop.emoji}</div>
+                            <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl ${crop.color} flex items-center justify-center text-xl sm:text-2xl`}>{crop.emoji}</div>
                             <div className="text-right">
-                                <div className="text-emerald-400 font-bold">{crop.buyPrice} <Coins size={12} className="inline"/></div>
-                                {isLocked && <div className="text-red-400 text-[10px] font-bold">Lvl {crop.unlockLevel}</div>}
+                                <div className="text-emerald-400 font-bold text-xs sm:text-sm">{crop.buyPrice} <Coins size={10} className="sm:w-3 sm:h-3 inline"/></div>
+                                {isLocked && <div className="text-red-400 text-[9px] sm:text-[10px] font-bold">Lvl {crop.unlockLevel}</div>}
                             </div>
                         </div>
-                        <h4 className="font-bold text-slate-200">{crop.name}</h4>
-                        <p className="text-xs text-slate-500 mb-2 h-8">{crop.description}</p>
-                        <div className="mb-3 text-xs text-emerald-400 font-semibold">
+                        <h4 className="font-bold text-slate-200 text-sm sm:text-base">{crop.name}</h4>
+                        <p className="text-[10px] sm:text-xs text-slate-500 mb-2 h-6 sm:h-8">{crop.description}</p>
+                        <div className="mb-2 sm:mb-3 text-[10px] sm:text-xs text-emerald-400 font-semibold">
                           In stock: {inventory[crop.id] || 0}
                         </div>
                         <div className="grid grid-cols-2 gap-2">

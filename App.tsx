@@ -37,9 +37,10 @@ import { ParticleEffects } from './components/ParticleEffects';
 import { WeatherEffects } from './components/WeatherEffects';
 import { PrestigePanel } from './components/PrestigePanel';
 import { MobileNav } from './components/MobileNav';
+import { Leaderboard } from './components/Leaderboard';
 import { safePreventDefault } from './utils/eventHelpers';
 
-type Tab = 'field' | 'shop' | 'market' | 'missions' | 'achievements';
+type Tab = 'field' | 'shop' | 'market' | 'missions' | 'achievements' | 'leaderboard';
 type DragAction = 'plant' | 'harvest' | 'water' | null;
 
 const getTotalItemCount = (state: GameState, id: ItemId) => {
@@ -1713,7 +1714,8 @@ const App: React.FC = () => {
                   { id: 'shop', label: 'Shop', icon: Store }, 
                   { id: 'market', label: 'Market', icon: TrendingUp },
                   { id: 'missions', label: 'Missions', icon: Target },
-                  { id: 'achievements', label: 'Achievements', icon: Trophy }
+                  { id: 'achievements', label: 'Achievements', icon: Trophy },
+                  { id: 'leaderboard', label: 'Leaderboard', icon: Trophy }
                 ].map((tab) => {
                   // Show badge for missions/achievements with completions
                   let badge = null;
@@ -1759,9 +1761,9 @@ const App: React.FC = () => {
         </header>
 
         {/* --- Main Content --- */}
-        <main className="max-w-5xl mx-auto px-4 pt-20 md:pt-36 pb-8 relative z-10">
+        <main className="max-w-5xl mx-auto px-2 sm:px-4 pt-16 sm:pt-20 md:pt-36 pb-20 sm:pb-8 relative z-10">
             {merchantOffer && !isMerchantOpen && (
-                <div className="fixed right-4 bottom-24 z-50 animate-bounce">
+                <div className="fixed right-2 sm:right-4 bottom-20 sm:bottom-24 z-50 animate-bounce">
                     <button 
                         onClick={(e) => {
                             e.preventDefault();
@@ -1769,13 +1771,12 @@ const App: React.FC = () => {
                             setIsMerchantOpen(true);
                         }}
                         onTouchEnd={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
+                            safePreventDefault(e);
                             setIsMerchantOpen(true);
                         }}
-                        className="bg-amber-600 hover:bg-amber-500 text-white p-4 rounded-full shadow-lg border-2 border-white/20 touch-manipulation"
+                        className="bg-amber-600 hover:bg-amber-500 text-white p-3 sm:p-4 rounded-full shadow-lg border-2 border-white/20 touch-manipulation"
                     >
-                        <MessageCircle size={24} /><div className="absolute -top-2 -right-2 bg-red-500 text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">!</div>
+                        <MessageCircle size={20} className="sm:w-6 sm:h-6" /><div className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2 bg-red-500 text-[10px] sm:text-xs font-bold w-4 h-4 sm:w-5 sm:h-5 rounded-full flex items-center justify-center">!</div>
                     </button>
                 </div>
             )}
@@ -1902,36 +1903,36 @@ const App: React.FC = () => {
 
                     {/* Quick Plant Toolbar */}
                     {!isEditMode && selectedSeed && (
-                        <div className="mb-3 sm:mb-4 p-2 sm:p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg sm:rounded-xl">
-                            <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm flex-wrap">
+                        <div className="mb-2 sm:mb-3 md:mb-4 p-2 sm:p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg sm:rounded-xl">
+                            <div className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs md:text-sm flex-wrap">
                                 <span className="text-emerald-400 font-bold">Selected:</span>
-                                <span className="text-xl sm:text-2xl">{CROPS[selectedSeed].emoji}</span>
-                                <span className="text-slate-200">{CROPS[selectedSeed].name}</span>
-                                <span className="text-slate-400 text-[10px] sm:text-xs ml-auto hidden sm:inline">
+                                <span className="text-lg sm:text-xl md:text-2xl">{CROPS[selectedSeed].emoji}</span>
+                                <span className="text-slate-200 text-[10px] sm:text-xs md:text-sm">{CROPS[selectedSeed].name}</span>
+                                <span className="text-slate-400 text-[9px] sm:text-[10px] md:text-xs ml-auto hidden sm:inline">
                                     Click empty plots to plant • Drag to plant multiple
                                 </span>
-                                <span className="text-slate-400 text-[10px] sm:hidden ml-auto">
+                                <span className="text-slate-400 text-[9px] sm:hidden ml-auto">
                                     Tap to plant
                                 </span>
                             </div>
                         </div>
                     )}
 
-                    <div className={`bg-gradient-to-br from-[#1a2233] to-[#0f172a] border border-white/10 rounded-3xl p-2 sm:p-6 shadow-2xl backdrop-blur-sm overflow-x-auto transition-all ${isEditMode ? 'ring-2 ring-yellow-500/30' : ''}`}>
+                    <div className={`bg-gradient-to-br from-[#1a2233] to-[#0f172a] border border-white/10 rounded-2xl sm:rounded-3xl p-1.5 sm:p-2 md:p-6 shadow-2xl backdrop-blur-sm overflow-x-auto transition-all ${isEditMode ? 'ring-2 ring-yellow-500/30' : ''}`}>
                         {isEditMode && (
-                            <div className="text-center text-xs text-yellow-200/70 mb-4 pb-3 border-b border-yellow-500/20">
+                            <div className="text-center text-[10px] sm:text-xs text-yellow-200/70 mb-2 sm:mb-4 pb-2 sm:pb-3 border-b border-yellow-500/20 px-2">
                                 <p className="animate-pulse">💡 Drag plots to rearrange • Decorations can overlap plots</p>
                             </div>
                         )}
-                        <div className="min-w-[300px] grid grid-cols-6 gap-1.5 sm:gap-3 mx-auto select-none max-w-[700px] touch-none">
+                        <div className="min-w-[280px] grid grid-cols-6 gap-1 sm:gap-1.5 md:gap-3 mx-auto select-none max-w-[700px] touch-none">
                             {renderGrid}
                         </div>
                     </div>
 
                     {/* Enhanced Toolbar */}
                     {!isEditMode && (
-                      <div className="fixed bottom-4 inset-x-0 flex justify-center z-50 px-4 pointer-events-none">
-                          <div className="bg-[#0f172a]/98 backdrop-blur-xl border-2 border-white/20 p-3 rounded-2xl shadow-2xl flex flex-col gap-2 pointer-events-auto max-w-4xl w-full">
+                      <div className="fixed bottom-16 sm:bottom-4 inset-x-0 flex justify-center z-50 px-2 sm:px-4 pointer-events-none safe-area-bottom">
+                          <div className="bg-[#0f172a]/98 backdrop-blur-xl border-2 border-white/20 p-2 sm:p-3 rounded-xl sm:rounded-2xl shadow-2xl flex flex-col gap-1.5 sm:gap-2 pointer-events-auto max-w-4xl w-full">
                               {/* Cancel Tools */}
                               {(selectedBuildingToPlace || placingSprinkler || selectedDecorationToPlace) && (
                                   <div className="flex items-center gap-2">
@@ -1961,8 +1962,8 @@ const App: React.FC = () => {
 
                               {/* Seeds Selection */}
                               {!selectedBuildingToPlace && !placingSprinkler && !selectedDecorationToPlace && (
-                                  <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-                                      <div className="text-xs text-slate-400 font-bold px-2 whitespace-nowrap">Seeds:</div>
+                                  <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar pb-1">
+                                      <div className="text-[10px] sm:text-xs text-slate-400 font-bold px-1.5 sm:px-2 whitespace-nowrap flex-shrink-0">Seeds:</div>
                                       {Object.values(CROPS).map(crop => {
                                           const count = gameState.inventory[crop.id] || 0;
                                           const isLocked = gameState.level < crop.unlockLevel && count === 0;
@@ -1979,24 +1980,24 @@ const App: React.FC = () => {
                                                       safePreventDefault(e);
                                                       setSelectedSeed(crop.id);
                                                   }}
-                                                  className={`relative flex flex-col items-center p-2.5 rounded-xl min-w-[75px] border-2 transition-all active:scale-95 touch-manipulation ${
+                                                  className={`relative flex flex-col items-center p-1.5 sm:p-2 md:p-2.5 rounded-lg sm:rounded-xl min-w-[60px] sm:min-w-[70px] md:min-w-[75px] border-2 transition-all active:scale-95 touch-manipulation flex-shrink-0 ${
                                                       selectedSeed === crop.id 
                                                           ? 'bg-emerald-600/30 border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.4)] scale-105' 
                                                           : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20'
                                                   } ${count === 0 ? 'opacity-50' : ''}`}
                                                   title={`${crop.name} - ${count} available`}
                                               >
-                                                  <span className="text-3xl mb-1 filter drop-shadow-lg">{crop.emoji}</span>
-                                                  <span className="text-[10px] font-bold uppercase text-slate-300">{crop.name}</span>
+                                                  <span className="text-xl sm:text-2xl md:text-3xl mb-0.5 sm:mb-1 filter drop-shadow-lg">{crop.emoji}</span>
+                                                  <span className="text-[8px] sm:text-[9px] md:text-[10px] font-bold uppercase text-slate-300 leading-tight text-center">{crop.name}</span>
                                                   {count > 0 && (
-                                                      <div className="absolute -top-1 -right-1 bg-emerald-500 border-2 border-[#0f172a] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow-lg">
+                                                      <div className="absolute -top-0.5 -right-0.5 sm:-top-1 sm:-right-1 bg-emerald-500 border-2 border-[#0f172a] text-white text-[8px] sm:text-[9px] md:text-[10px] font-bold px-1 sm:px-1.5 py-0.5 rounded-full shadow-lg">
                                                           {count}
                                                       </div>
                                                   )}
                                                   {count === 0 && (
                                                       <div className="absolute inset-0 flex items-center justify-center">
-                                                          <div className="bg-black/50 rounded-full p-1">
-                                                              <X size={12} className="text-red-400"/>
+                                                          <div className="bg-black/50 rounded-full p-0.5 sm:p-1">
+                                                              <X size={10} className="sm:w-3 sm:h-3 text-red-400"/>
                                                           </div>
                                                       </div>
                                                   )}
@@ -2199,6 +2200,10 @@ const App: React.FC = () => {
                  </div>
             )}
 
+            {activeTab === 'leaderboard' && (
+                <Leaderboard currentUsername={currentUser?.username} />
+            )}
+
             {activeTab === 'missions' && (
                 <div className="space-y-4">
                     <div className="flex items-center justify-between mb-6">
@@ -2211,30 +2216,30 @@ const App: React.FC = () => {
                     </div>
 
                     {gameState.dailyChallenge && (
-                        <div className="bg-gradient-to-r from-purple-600/20 to-pink-600/20 border border-purple-500/30 rounded-xl p-4 mb-6">
+                        <div className="bg-gradient-to-r from-purple-600/20 to-pink-600/20 border border-purple-500/30 rounded-lg sm:rounded-xl p-3 sm:p-4 mb-4 sm:mb-6">
                             <div className="flex items-center gap-2 mb-2">
-                                <Calendar size={20} className="text-purple-400" />
-                                <h3 className="font-bold text-purple-300">Daily Challenge</h3>
+                                <Calendar size={16} className="sm:w-5 sm:h-5 text-purple-400" />
+                                <h3 className="font-bold text-purple-300 text-sm sm:text-base">Daily Challenge</h3>
                             </div>
-                            <p className="text-sm text-slate-300 mb-2">{gameState.dailyChallenge.description}</p>
+                            <p className="text-xs sm:text-sm text-slate-300 mb-2">{gameState.dailyChallenge.description}</p>
                             <div className="flex items-center gap-2 mb-2">
-                                <div className="flex-1 bg-slate-800 rounded-full h-2 overflow-hidden">
+                                <div className="flex-1 bg-slate-800 rounded-full h-1.5 sm:h-2 overflow-hidden">
                                     <div 
                                         className="h-full bg-purple-500 transition-all"
                                         style={{ width: `${Math.min(100, (gameState.dailyChallenge.current / gameState.dailyChallenge.target) * 100)}%` }}
                                     />
                                 </div>
-                                <span className="text-xs text-slate-400">
+                                <span className="text-[10px] sm:text-xs text-slate-400">
                                     {gameState.dailyChallenge.current} / {gameState.dailyChallenge.target}
                                 </span>
                             </div>
                             {gameState.dailyChallenge?.completed && gameState.dailyChallenge && (
-                                <div className="text-xs text-emerald-400 font-bold">✓ Completed! +{Math.round((gameState.dailyChallenge.rewardMultiplier - 1) * 100)}% bonus active</div>
+                                <div className="text-[10px] sm:text-xs text-emerald-400 font-bold">✓ Completed! +{Math.round((gameState.dailyChallenge.rewardMultiplier - 1) * 100)}% bonus active</div>
                             )}
                         </div>
                     )}
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                         {(gameState.missions || [])
                             .filter(m => m && m.unlocked)
                             .map(mission => {
@@ -2242,18 +2247,18 @@ const App: React.FC = () => {
                                 return (
                                 <div 
                                     key={mission.id}
-                                    className={`bg-slate-800/50 rounded-xl p-4 border transition-all ${
+                                    className={`bg-slate-800/50 rounded-lg sm:rounded-xl p-3 sm:p-4 border transition-all ${
                                         mission.completed 
                                             ? 'border-emerald-500/50 bg-emerald-900/10' 
                                             : 'border-white/5 hover:border-white/10'
                                     }`}
                                 >
-                                    <div className="flex items-start justify-between mb-2">
-                                        <div>
-                                            <h3 className="font-bold text-slate-200">{mission.title}</h3>
-                                            <p className="text-xs text-slate-400 mt-1">{mission.description}</p>
+                                    <div className="flex items-start justify-between mb-2 gap-2">
+                                        <div className="flex-1 min-w-0">
+                                            <h3 className="font-bold text-slate-200 text-sm sm:text-base">{mission.title}</h3>
+                                            <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1">{mission.description}</p>
                                         </div>
-                                        <div className={`px-2 py-1 rounded text-xs font-bold ${
+                                        <div className={`px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-[9px] sm:text-xs font-bold flex-shrink-0 ${
                                             mission.tier === 1 ? 'bg-blue-500/20 text-blue-300' :
                                             mission.tier === 2 ? 'bg-green-500/20 text-green-300' :
                                             mission.tier === 3 ? 'bg-yellow-500/20 text-yellow-300' :
@@ -2263,9 +2268,9 @@ const App: React.FC = () => {
                                             Tier {mission.tier}
                                         </div>
                                     </div>
-                                    <div className="mb-3">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <div className="flex-1 bg-slate-900 rounded-full h-2 overflow-hidden">
+                                    <div className="mb-2 sm:mb-3">
+                                        <div className="flex items-center gap-1.5 sm:gap-2 mb-1">
+                                            <div className="flex-1 bg-slate-900 rounded-full h-1.5 sm:h-2 overflow-hidden">
                                                 <div 
                                                     className={`h-full transition-all ${
                                                         mission.completed ? 'bg-emerald-500' : 'bg-slate-600'
@@ -2273,7 +2278,7 @@ const App: React.FC = () => {
                                                     style={{ width: `${Math.min(100, (mission.current / mission.target) * 100)}%` }}
                                                 />
                                             </div>
-                                            <span className="text-xs text-slate-400">
+                                            <span className="text-[10px] sm:text-xs text-slate-400 whitespace-nowrap">
                                                 {mission.current} / {mission.target}
                                             </span>
                                         </div>
@@ -2299,7 +2304,7 @@ const App: React.FC = () => {
             )}
 
             {activeTab === 'achievements' && (
-                <div className="space-y-6">
+                <div className="space-y-4 sm:space-y-6">
                     {/* Prestige Panel */}
                     {gameState.level >= (PRESTIGE_REQUIRED_LEVEL + (gameState.prestigeLevel * PRESTIGE_LEVEL_INCREMENT)) && (
                         <PrestigePanel
@@ -2344,16 +2349,16 @@ const App: React.FC = () => {
                         />
                     )}
 
-                    <div className="flex items-center justify-between mb-6">
-                        <h2 className="text-2xl font-bold text-slate-200 flex items-center gap-2">
-                            <Trophy size={24} /> Achievements
+                    <div className="flex items-center justify-between mb-4 sm:mb-6 flex-wrap gap-2">
+                        <h2 className="text-xl sm:text-2xl font-bold text-slate-200 flex items-center gap-2">
+                            <Trophy size={20} className="sm:w-6 sm:h-6" /> Achievements
                         </h2>
-                        <div className="text-sm text-slate-400">
+                        <div className="text-xs sm:text-sm text-slate-400">
                             Unlocked: {gameState.achievements.filter(a => a.unlocked).length} / {gameState.achievements.length}
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                         {(gameState.achievements || []).filter(a => a).map(achievement => (
                             <div 
                                 key={achievement.id}
@@ -2416,24 +2421,24 @@ const App: React.FC = () => {
                         const building = BUILDINGS[plot.buildingId];
                         return (
                             <>
-                                <div className="text-center mb-6">
-                                    <div className="text-4xl mb-2">{building.emoji}</div>
-                                    <h2 className="text-xl font-bold text-slate-200">{building.name}</h2>
-                                    <p className="text-sm text-slate-400">{building.description}</p>
+                                <div className="text-center mb-4 sm:mb-6">
+                                    <div className="text-3xl sm:text-4xl mb-2">{building.emoji}</div>
+                                    <h2 className="text-lg sm:text-xl font-bold text-slate-200">{building.name}</h2>
+                                    <p className="text-xs sm:text-sm text-slate-400">{building.description}</p>
                                 </div>
-                                <div className="space-y-4">
+                                <div className="space-y-3 sm:space-y-4">
                                     {building.recipes.map((recipe, idx) => {
                                         const inputItem = CROPS[recipe.input];
                                         const outputItem = PRODUCTS[recipe.output];
                                         const canCraft = (gameState.harvested[recipe.input] || 0) >= recipe.inputCount;
                                         
                                         return (
-                                            <div key={idx} className="bg-slate-800 p-4 rounded-xl flex items-center justify-between border border-white/5">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="text-2xl">{outputItem.emoji}</div>
-                                                    <div>
-                                                        <div className="font-bold text-sm text-slate-200">{outputItem.name}</div>
-                                                        <div className="text-xs text-slate-400 flex items-center gap-1">
+                                            <div key={idx} className="bg-slate-800 p-3 sm:p-4 rounded-lg sm:rounded-xl flex items-center justify-between gap-2 border border-white/5">
+                                                <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                                                    <div className="text-xl sm:text-2xl flex-shrink-0">{outputItem.emoji}</div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="font-bold text-xs sm:text-sm text-slate-200">{outputItem.name}</div>
+                                                        <div className="text-[10px] sm:text-xs text-slate-400 flex items-center gap-1 flex-wrap">
                                                             Requires: {recipe.inputCount} {inputItem.emoji}
                                                             <span className={canCraft ? 'text-emerald-400 font-bold' : 'text-red-400'}>
                                                                 (Have: {gameState.harvested[recipe.input] || 0})
@@ -2463,41 +2468,41 @@ const App: React.FC = () => {
 
         {/* Merchant Modal */}
         {isMerchantOpen && merchantOffer && (
-             <div className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-                 <div className="bg-[#1e293b] w-full max-w-lg rounded-3xl border border-amber-500/20 shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
+             <div className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4">
+                 <div className="bg-[#1e293b] w-full max-w-lg rounded-2xl sm:rounded-3xl border border-amber-500/20 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] sm:max-h-[80vh]">
                      {/* Header */}
-                     <div className="bg-amber-950/30 p-6 border-b border-white/5 flex justify-between items-center">
-                         <div>
-                             <h2 className="text-xl font-bold text-amber-100">{merchantOffer.merchantName}</h2>
-                             <p className="text-xs text-amber-400/60 uppercase tracking-widest">{merchantOffer.personality} Trader</p>
+                     <div className="bg-amber-950/30 p-3 sm:p-4 md:p-6 border-b border-white/5 flex justify-between items-center">
+                         <div className="min-w-0 flex-1">
+                             <h2 className="text-base sm:text-lg md:text-xl font-bold text-amber-100 truncate">{merchantOffer.merchantName}</h2>
+                             <p className="text-[10px] sm:text-xs text-amber-400/60 uppercase tracking-widest">{merchantOffer.personality} Trader</p>
                          </div>
-                         <button onClick={() => setIsMerchantOpen(false)} className="text-slate-500 hover:text-white"><X /></button>
+                         <button onClick={() => setIsMerchantOpen(false)} className="text-slate-500 hover:text-white ml-2 flex-shrink-0"><X size={20} className="sm:w-6 sm:h-6" /></button>
                      </div>
 
                      {/* Chat Area */}
-                     <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-[#111827]">
-                         <div className="bg-amber-900/20 p-4 rounded-2xl rounded-tl-none border border-amber-500/10 text-amber-100 text-sm">
+                     <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 space-y-3 sm:space-y-4 bg-[#111827]">
+                         <div className="bg-amber-900/20 p-3 sm:p-4 rounded-xl sm:rounded-2xl rounded-tl-none border border-amber-500/10 text-amber-100 text-xs sm:text-sm">
                              I'm looking for <span className="font-bold text-white">{merchantOffer.amount} {merchantOffer.wantedItem}s</span>. 
                              I'll offer you <span className="font-bold text-amber-400">{merchantOffer.baseValue} Coins</span>.
                          </div>
                          {merchantChat.map((msg, i) => (
                              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                 <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-slate-700 text-slate-200 rounded-tl-none'}`}>
+                                 <div className={`max-w-[85%] sm:max-w-[80%] p-2.5 sm:p-3 rounded-xl sm:rounded-2xl text-xs sm:text-sm ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-slate-700 text-slate-200 rounded-tl-none'}`}>
                                      {msg.text}
                                  </div>
                              </div>
                          ))}
-                         {merchantLoading && <div className="text-xs text-slate-500 animate-pulse flex items-center gap-2"><Loader2 size={12} className="animate-spin"/> Merchant is thinking...</div>}
+                         {merchantLoading && <div className="text-[10px] sm:text-xs text-slate-500 animate-pulse flex items-center gap-2"><Loader2 size={10} className="sm:w-3 sm:h-3 animate-spin"/> Merchant is thinking...</div>}
                      </div>
 
                      {/* Input Area */}
-                     <div className="p-4 bg-slate-800 border-t border-white/5">
+                     <div className="p-3 sm:p-4 bg-slate-800 border-t border-white/5">
                          <div className="flex gap-2">
                              <input 
                                 value={merchantInput}
                                 onChange={e => setMerchantInput(e.target.value)}
                                 placeholder="Counter offer?"
-                                className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-amber-500 text-white"
+                                className="flex-1 bg-slate-900 border border-slate-700 rounded-lg sm:rounded-xl px-3 sm:px-4 py-2 text-xs sm:text-sm focus:outline-none focus:border-amber-500 text-white"
                              />
                              <Button onClick={async () => {
                                  if (!merchantOffer || !merchantInput.trim()) return;

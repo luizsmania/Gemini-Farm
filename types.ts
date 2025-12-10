@@ -5,7 +5,15 @@ export enum CropId {
   CARROT = 'carrot',
   TOMATO = 'tomato',
   PUMPKIN = 'pumpkin',
-  GEMINI_FRUIT = 'gemini_fruit'
+  GEMINI_FRUIT = 'gemini_fruit',
+  STRAWBERRY = 'strawberry',
+  POTATO = 'potato',
+  LETTUCE = 'lettuce',
+  PEPPER = 'pepper',
+  EGGPLANT = 'eggplant',
+  WATERMELON = 'watermelon',
+  BLUEBERRY = 'blueberry',
+  APPLE = 'apple'
 }
 
 export enum ProductId {
@@ -14,13 +22,26 @@ export enum ProductId {
   POPCORN = 'popcorn',
   KETCHUP = 'ketchup',
   PUMPKIN_PIE = 'pumpkin_pie',
-  STAR_JAM = 'star_jam'
+  STAR_JAM = 'star_jam',
+  JAM = 'jam',
+  CHIPS = 'chips',
+  SALAD = 'salad',
+  JUICE = 'juice',
+  PICKLES = 'pickles',
+  SAUCE = 'sauce',
+  SMOOTHIE = 'smoothie',
+  CIDER = 'cider'
 }
 
 export enum BuildingId {
   WINDMILL = 'windmill',
   BAKERY = 'bakery',
-  SNACK_SHACK = 'snack_shack'
+  SNACK_SHACK = 'snack_shack',
+  JUICE_BAR = 'juice_bar',
+  PRESERVERY = 'preservery',
+  FRIED_FOOD_STAND = 'fried_food_stand',
+  SALAD_BAR = 'salad_bar',
+  CIDER_MILL = 'cider_mill'
 }
 
 export enum DecorationId {
@@ -218,6 +239,16 @@ export interface Statistics {
   totalPrestiges: number;
   maxCombo: number;
   perfectSeasons: number; // Seasons with 100% harvest rate
+}
+
+export interface LeaderboardEntry {
+  username: string;
+  rank: number;
+  score: number;
+  level: number;
+  coins: number;
+  prestigeLevel: number;
+  category: 'coins' | 'level' | 'prestige' | 'total_harvested';
 }
 
 export interface DailyChallenge {

@@ -36,51 +36,51 @@ export const QuestBoard: React.FC<QuestBoardProps> = ({ quest, loading, onReques
   const seconds = timeLeft % 60;
 
   return (
-    <div className="h-full bg-gradient-to-br from-amber-950/40 to-[#1a1c2e] border border-amber-600/20 rounded-3xl p-6 relative overflow-hidden group shadow-lg">
+    <div className="h-full bg-gradient-to-br from-amber-950/40 to-[#1a1c2e] border border-amber-600/20 rounded-2xl sm:rounded-3xl p-4 sm:p-6 relative overflow-hidden group shadow-lg">
         {/* Background glow */}
-        <div className="absolute -top-10 -right-10 w-32 h-32 bg-amber-600/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -top-6 sm:-top-10 -right-6 sm:-right-10 w-24 h-24 sm:w-32 sm:h-32 bg-amber-600/10 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="flex justify-between items-start relative z-10 mb-4">
-            <div className="flex gap-4">
-                 <div className="w-12 h-12 bg-amber-500/10 rounded-xl flex items-center justify-center text-2xl border border-amber-500/20 shadow-sm">
+        <div className="flex justify-between items-start relative z-10 mb-3 sm:mb-4 gap-2">
+            <div className="flex gap-2 sm:gap-3 md:gap-4 flex-1 min-w-0">
+                 <div className="w-10 h-10 sm:w-12 sm:h-12 bg-amber-500/10 rounded-lg sm:rounded-xl flex items-center justify-center text-xl sm:text-2xl border border-amber-500/20 shadow-sm flex-shrink-0">
                     {crop.emoji}
                  </div>
-                 <div>
-                     <div className="flex items-center gap-2 mb-1">
-                        <span className="bg-amber-500/20 text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded border border-amber-500/20">URGENT</span>
+                 <div className="min-w-0 flex-1">
+                     <div className="flex items-center gap-1.5 sm:gap-2 mb-1">
+                        <span className="bg-amber-500/20 text-amber-300 text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded border border-amber-500/20">URGENT</span>
                      </div>
-                     <h3 className="font-bold text-amber-50 text-lg leading-tight">{quest.title}</h3>
-                     <p className="text-xs text-amber-200/60 mt-1">{quest.description}</p>
+                     <h3 className="font-bold text-amber-50 text-sm sm:text-base md:text-lg leading-tight">{quest.title}</h3>
+                     <p className="text-[10px] sm:text-xs text-amber-200/60 mt-0.5 sm:mt-1">{quest.description}</p>
                  </div>
             </div>
         </div>
 
-        <div className="space-y-3 relative z-10 mt-auto">
-            <div className="flex justify-between items-end">
-                <div className="text-xs font-bold text-amber-200/80">
-                    <span className="text-white text-lg">{quest.currentAmount}</span> / {quest.targetAmount} {crop.name}
+        <div className="space-y-2 sm:space-y-3 relative z-10 mt-auto">
+            <div className="flex justify-between items-end gap-2">
+                <div className="text-[10px] sm:text-xs font-bold text-amber-200/80 min-w-0">
+                    <span className="text-white text-base sm:text-lg">{quest.currentAmount}</span> / {quest.targetAmount} {crop.name}
                 </div>
-                <div className="text-right">
-                    <div className="flex items-center gap-1.5 text-amber-400 font-mono text-sm font-bold bg-amber-950/30 px-2 py-1 rounded-lg border border-amber-500/10">
-                        <Timer size={14} />
+                <div className="text-right flex-shrink-0">
+                    <div className="flex items-center gap-1 sm:gap-1.5 text-amber-400 font-mono text-xs sm:text-sm font-bold bg-amber-950/30 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-md sm:rounded-lg border border-amber-500/10">
+                        <Timer size={12} className="sm:w-[14px] sm:h-[14px]" />
                         {minutes}:{seconds.toString().padStart(2, '0')}
                     </div>
                 </div>
             </div>
             
-            <div className="h-2.5 bg-slate-800 rounded-full overflow-hidden border border-white/5">
+            <div className="h-2 sm:h-2.5 bg-slate-800 rounded-full overflow-hidden border border-white/5">
                 <div 
                     className="h-full bg-gradient-to-r from-amber-600 to-amber-400 transition-all duration-500 ease-out shadow-[0_0_10px_rgba(251,191,36,0.5)]"
                     style={{ width: `${progress}%` }}
                 />
             </div>
 
-            <div className="flex items-center gap-2 pt-2 border-t border-white/5 mt-2">
-                <Trophy size={14} className="text-amber-300" />
-                <span className="text-xs font-bold text-amber-100">Reward:</span>
-                <span className="text-xs text-amber-300">{quest.rewardCoins} Coins</span>
-                <span className="text-xs text-slate-500">•</span>
-                <span className="text-xs text-blue-300">{quest.rewardXp} XP</span>
+            <div className="flex items-center gap-1.5 sm:gap-2 pt-2 border-t border-white/5 mt-2 flex-wrap">
+                <Trophy size={12} className="sm:w-[14px] sm:h-[14px] text-amber-300" />
+                <span className="text-[10px] sm:text-xs font-bold text-amber-100">Reward:</span>
+                <span className="text-[10px] sm:text-xs text-amber-300">{quest.rewardCoins} Coins</span>
+                <span className="text-[10px] sm:text-xs text-slate-500">•</span>
+                <span className="text-[10px] sm:text-xs text-blue-300">{quest.rewardXp} XP</span>
             </div>
         </div>
     </div>

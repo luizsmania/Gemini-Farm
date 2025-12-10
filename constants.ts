@@ -77,8 +77,112 @@ export const CROPS: Record<CropId, CropData> = {
     growTimeMs: 120000,
     color: 'bg-purple-500',
     unlockLevel: 12,
-    xpReward: 200, // Reduced from 500
+    xpReward: 200,
     seasonAffinity: 'winter'
+  },
+  [CropId.STRAWBERRY]: {
+    id: CropId.STRAWBERRY,
+    name: 'Strawberry',
+    emoji: '🍓',
+    description: 'Sweet and juicy. Quick to grow.',
+    buyPrice: 60,
+    baseSellPrice: 120,
+    growTimeMs: 12000,
+    color: 'bg-red-400',
+    unlockLevel: 3,
+    xpReward: 12,
+    seasonAffinity: 'spring'
+  },
+  [CropId.POTATO]: {
+    id: CropId.POTATO,
+    name: 'Potato',
+    emoji: '🥔',
+    description: 'Versatile root vegetable. Great for processing.',
+    buyPrice: 30,
+    baseSellPrice: 55,
+    growTimeMs: 10000,
+    color: 'bg-yellow-300',
+    unlockLevel: 2,
+    xpReward: 6,
+    seasonAffinity: 'spring'
+  },
+  [CropId.LETTUCE]: {
+    id: CropId.LETTUCE,
+    name: 'Lettuce',
+    emoji: '🥬',
+    description: 'Fresh and crisp. Grows fast.',
+    buyPrice: 20,
+    baseSellPrice: 40,
+    growTimeMs: 6000,
+    color: 'bg-green-400',
+    unlockLevel: 2,
+    xpReward: 5,
+    seasonAffinity: 'spring'
+  },
+  [CropId.PEPPER]: {
+    id: CropId.PEPPER,
+    name: 'Pepper',
+    emoji: '🫑',
+    description: 'Colorful and spicy. Moderate growth.',
+    buyPrice: 80,
+    baseSellPrice: 160,
+    growTimeMs: 20000,
+    color: 'bg-green-500',
+    unlockLevel: 5,
+    xpReward: 20,
+    seasonAffinity: 'summer'
+  },
+  [CropId.EGGPLANT]: {
+    id: CropId.EGGPLANT,
+    name: 'Eggplant',
+    emoji: '🍆',
+    description: 'Purple and unique. Takes time to mature.',
+    buyPrice: 150,
+    baseSellPrice: 320,
+    growTimeMs: 40000,
+    color: 'bg-purple-600',
+    unlockLevel: 7,
+    xpReward: 45,
+    seasonAffinity: 'summer'
+  },
+  [CropId.WATERMELON]: {
+    id: CropId.WATERMELON,
+    name: 'Watermelon',
+    emoji: '🍉',
+    description: 'Huge summer fruit. Slow but rewarding.',
+    buyPrice: 300,
+    baseSellPrice: 750,
+    growTimeMs: 75000,
+    color: 'bg-green-600',
+    unlockLevel: 10,
+    xpReward: 100,
+    seasonAffinity: 'summer'
+  },
+  [CropId.BLUEBERRY]: {
+    id: CropId.BLUEBERRY,
+    name: 'Blueberry',
+    emoji: '🫐',
+    description: 'Tiny but valuable. Perfect for preserves.',
+    buyPrice: 120,
+    baseSellPrice: 280,
+    growTimeMs: 25000,
+    color: 'bg-blue-600',
+    unlockLevel: 6,
+    xpReward: 30,
+    seasonAffinity: 'summer'
+  },
+  [CropId.APPLE]: {
+    id: CropId.APPLE,
+    name: 'Apple',
+    emoji: '🍎',
+    description: 'Classic fruit. Great for cider.',
+    buyPrice: 180,
+    baseSellPrice: 400,
+    growTimeMs: 50000,
+    color: 'bg-red-600',
+    unlockLevel: 8,
+    xpReward: 60,
+    seasonAffinity: 'autumn'
   }
 };
 
@@ -88,7 +192,15 @@ export const PRODUCTS: Record<ProductId, ProductData> = {
   [ProductId.POPCORN]: { id: ProductId.POPCORN, name: 'Popcorn', emoji: '🍿', baseSellPrice: 80, description: 'Buttery snack.' },
   [ProductId.KETCHUP]: { id: ProductId.KETCHUP, name: 'Ketchup', emoji: '🥫', baseSellPrice: 450, description: 'Tomato sauce.' },
   [ProductId.PUMPKIN_PIE]: { id: ProductId.PUMPKIN_PIE, name: 'Pumpkin Pie', emoji: '🥧', baseSellPrice: 1500, description: 'Holiday treat.' },
-  [ProductId.STAR_JAM]: { id: ProductId.STAR_JAM, name: 'Star Jam', emoji: '🍯', baseSellPrice: 6000, description: 'Cosmic delight.' }
+  [ProductId.STAR_JAM]: { id: ProductId.STAR_JAM, name: 'Star Jam', emoji: '🍯', baseSellPrice: 6000, description: 'Cosmic delight.' },
+  [ProductId.JAM]: { id: ProductId.JAM, name: 'Strawberry Jam', emoji: '🍓', baseSellPrice: 250, description: 'Sweet preserve.' },
+  [ProductId.CHIPS]: { id: ProductId.CHIPS, name: 'Potato Chips', emoji: '🥔', baseSellPrice: 120, description: 'Crispy snack.' },
+  [ProductId.SALAD]: { id: ProductId.SALAD, name: 'Fresh Salad', emoji: '🥗', baseSellPrice: 100, description: 'Healthy mix.' },
+  [ProductId.JUICE]: { id: ProductId.JUICE, name: 'Fruit Juice', emoji: '🧃', baseSellPrice: 200, description: 'Refreshing drink.' },
+  [ProductId.PICKLES]: { id: ProductId.PICKLES, name: 'Pickles', emoji: '🥒', baseSellPrice: 180, description: 'Tangy preserved.' },
+  [ProductId.SAUCE]: { id: ProductId.SAUCE, name: 'Hot Sauce', emoji: '🌶️', baseSellPrice: 350, description: 'Spicy condiment.' },
+  [ProductId.SMOOTHIE]: { id: ProductId.SMOOTHIE, name: 'Berry Smoothie', emoji: '🥤', baseSellPrice: 400, description: 'Blended delight.' },
+  [ProductId.CIDER]: { id: ProductId.CIDER, name: 'Apple Cider', emoji: '🍺', baseSellPrice: 800, description: 'Autumn favorite.' }
 };
 
 export const BUILDINGS: Record<BuildingId, BuildingData> = {
@@ -125,6 +237,64 @@ export const BUILDINGS: Record<BuildingId, BuildingData> = {
     recipes: [
       { input: CropId.CORN, inputCount: 2, output: ProductId.POPCORN, processTimeMs: 15000 },
       { input: CropId.TOMATO, inputCount: 3, output: ProductId.KETCHUP, processTimeMs: 25000 }
+    ]
+  },
+  [BuildingId.JUICE_BAR]: {
+    id: BuildingId.JUICE_BAR,
+    name: 'Juice Bar',
+    emoji: '🧃',
+    description: 'Press fruits into refreshing juices.',
+    cost: 1800,
+    unlockLevel: 6,
+    recipes: [
+      { input: CropId.WATERMELON, inputCount: 1, output: ProductId.JUICE, processTimeMs: 20000 },
+      { input: CropId.APPLE, inputCount: 2, output: ProductId.JUICE, processTimeMs: 18000 }
+    ]
+  },
+  [BuildingId.PRESERVERY]: {
+    id: BuildingId.PRESERVERY,
+    name: 'Preservery',
+    emoji: '🥫',
+    description: 'Preserve fruits and vegetables.',
+    cost: 2500,
+    unlockLevel: 7,
+    recipes: [
+      { input: CropId.STRAWBERRY, inputCount: 4, output: ProductId.JAM, processTimeMs: 30000 },
+      { input: CropId.CARROT, inputCount: 3, output: ProductId.PICKLES, processTimeMs: 35000 }
+    ]
+  },
+  [BuildingId.FRIED_FOOD_STAND]: {
+    id: BuildingId.FRIED_FOOD_STAND,
+    name: 'Fried Food Stand',
+    emoji: '🍟',
+    description: 'Fry up crispy snacks.',
+    cost: 1500,
+    unlockLevel: 5,
+    recipes: [
+      { input: CropId.POTATO, inputCount: 3, output: ProductId.CHIPS, processTimeMs: 20000 }
+    ]
+  },
+  [BuildingId.SALAD_BAR]: {
+    id: BuildingId.SALAD_BAR,
+    name: 'Salad Bar',
+    emoji: '🥗',
+    description: 'Mix fresh salads.',
+    cost: 1000,
+    unlockLevel: 4,
+    recipes: [
+      { input: CropId.LETTUCE, inputCount: 2, output: ProductId.SALAD, processTimeMs: 10000 },
+      { input: CropId.TOMATO, inputCount: 1, output: ProductId.SALAD, processTimeMs: 10000 }
+    ]
+  },
+  [BuildingId.CIDER_MILL]: {
+    id: BuildingId.CIDER_MILL,
+    name: 'Cider Mill',
+    emoji: '🍺',
+    description: 'Press apples into cider.',
+    cost: 3000,
+    unlockLevel: 9,
+    recipes: [
+      { input: CropId.APPLE, inputCount: 5, output: ProductId.CIDER, processTimeMs: 60000 }
     ]
   }
 };
@@ -168,6 +338,14 @@ export const INITIAL_INVENTORY: Record<string, number> = {
   [CropId.TOMATO]: 0,
   [CropId.PUMPKIN]: 0,
   [CropId.GEMINI_FRUIT]: 0,
+  [CropId.STRAWBERRY]: 0,
+  [CropId.POTATO]: 0,
+  [CropId.LETTUCE]: 0,
+  [CropId.PEPPER]: 0,
+  [CropId.EGGPLANT]: 0,
+  [CropId.WATERMELON]: 0,
+  [CropId.BLUEBERRY]: 0,
+  [CropId.APPLE]: 0,
 };
 
 export const INITIAL_HARVESTED: Record<string, number> = {
@@ -177,12 +355,28 @@ export const INITIAL_HARVESTED: Record<string, number> = {
   [CropId.TOMATO]: 0,
   [CropId.PUMPKIN]: 0,
   [CropId.GEMINI_FRUIT]: 0,
+  [CropId.STRAWBERRY]: 0,
+  [CropId.POTATO]: 0,
+  [CropId.LETTUCE]: 0,
+  [CropId.PEPPER]: 0,
+  [CropId.EGGPLANT]: 0,
+  [CropId.WATERMELON]: 0,
+  [CropId.BLUEBERRY]: 0,
+  [CropId.APPLE]: 0,
   [ProductId.FLOUR]: 0,
   [ProductId.BREAD]: 0,
   [ProductId.POPCORN]: 0,
   [ProductId.KETCHUP]: 0,
   [ProductId.PUMPKIN_PIE]: 0,
   [ProductId.STAR_JAM]: 0,
+  [ProductId.JAM]: 0,
+  [ProductId.CHIPS]: 0,
+  [ProductId.SALAD]: 0,
+  [ProductId.JUICE]: 0,
+  [ProductId.PICKLES]: 0,
+  [ProductId.SAUCE]: 0,
+  [ProductId.SMOOTHIE]: 0,
+  [ProductId.CIDER]: 0,
 };
 
 export const XP_TO_LEVEL_UP = (level: number) => Math.floor(150 * Math.pow(1.8, level - 1)); // Much harder progression
