@@ -509,7 +509,13 @@ const App: React.FC = () => {
   // --- Grid Interaction Logic ---
 
   // 1. Mouse Down (Start Drag or Click)
-  const handleGridMouseDown = (x: number, y: number) => {
+  const handleGridMouseDown = (x: number, y: number, event?: React.MouseEvent | React.TouchEvent) => {
+    // Prevent default for touch events
+    if (event && 'touches' in event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    
     // A. Edit Mode Drag Start
     if (isEditMode) {
         const plot = gameState.plots.find(p => p.x === x && p.y === y);
@@ -844,11 +850,13 @@ const App: React.FC = () => {
       else if (plot.status === 'empty' && selectedSeed && !selectedBuildingToPlace && !placingSprinkler) action = 'plant';
       
       if (action) {
+          // Perform the action immediately on first touch/click
+          handleInteractPlot(plotId);
+          // Then set up drag for subsequent tiles
           setIsDragging(true);
           setDragAction(action);
           lastProcessedPlotRef.current = plotId;
           lastProcessedTimeRef.current = Date.now();
-          handleInteractPlot(plotId);
       } else {
           handleInteractPlot(plotId); 
       }
@@ -957,7 +965,7 @@ const App: React.FC = () => {
                     onTouchStart={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      handleGridMouseDown(x, y);
+                      handleGridMouseDown(x, y, e);
                     }}
                     onTouchEnd={(e) => {
                       e.preventDefault();
@@ -965,9 +973,33 @@ const App: React.FC = () => {
                       handleGridMouseUp(x, y);
                     }}
                     onTouchMove={(e) => {
-                      if (!isDragging || !dragAction || isEditMode) return;
                       e.preventDefault();
                       e.stopPropagation();
+                      
+                      // Handle edit mode drag
+                      if (isEditMode && editDragItem) {
+                        const touch = e.touches[0];
+                        if (touch) {
+                          const element = document.elementFromPoint(touch.clientX, touch.clientY);
+                          if (element) {
+                            const cell = element.closest('[data-grid-cell]');
+                            if (cell) {
+                              const cellId = cell.getAttribute('data-grid-cell');
+                              if (cellId) {
+                                const [cx, cy] = cellId.split('-').map(Number);
+                                // Update drag item position for visual feedback
+                                if (editDragItem.startX !== cx || editDragItem.startY !== cy) {
+                                  // Visual feedback is handled by isValidDrop in render
+                                }
+                              }
+                            }
+                          }
+                        }
+                        return;
+                      }
+                      
+                      // Handle farming drag actions
+                      if (!isDragging || !dragAction) return;
                       const touch = e.touches[0];
                       if (touch) {
                         const element = document.elementFromPoint(touch.clientX, touch.clientY);

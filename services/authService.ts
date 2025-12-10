@@ -4,16 +4,27 @@ import { registerUserAPI, loginUserAPI } from "./databaseService";
 
 const SESSION_KEY = 'gemini_farm_session';
 
-// Use database API for registration
+// Use database API for registration, fallback to localStorage
 export const registerUser = async (username: string, password: string): Promise<{ success: boolean; message: string; user?: User }> => {
-  const result = await registerUserAPI(username, password);
-  
-  if (result.success && result.user) {
-    // Set session
-    localStorage.setItem(SESSION_KEY, result.user.username);
+  try {
+    const result = await registerUserAPI(username, password);
+    
+    if (result.success && result.user) {
+      // Set session
+      localStorage.setItem(SESSION_KEY, result.user.username);
+      return result;
+    }
+    
+    // If API fails, fallback to localStorage
+    if (!result.success && result.message.includes('Failed to connect')) {
+      return registerUserLocal(username, password);
+    }
+    
+    return result;
+  } catch (error) {
+    // Fallback to localStorage on error
+    return registerUserLocal(username, password);
   }
-  
-  return result;
 };
 
 // Legacy localStorage fallback (for backward compatibility)
@@ -78,16 +89,27 @@ export const registerUserLocal = (username: string, password: string): { success
   };
 };
 
-// Use database API for login
+// Use database API for login, fallback to localStorage
 export const loginUser = async (username: string, password: string): Promise<{ success: boolean; message: string; user?: User }> => {
-  const result = await loginUserAPI(username, password);
-  
-  if (result.success && result.user) {
-    // Set session
-    localStorage.setItem(SESSION_KEY, result.user.username);
+  try {
+    const result = await loginUserAPI(username, password);
+    
+    if (result.success && result.user) {
+      // Set session
+      localStorage.setItem(SESSION_KEY, result.user.username);
+      return result;
+    }
+    
+    // If API fails, fallback to localStorage
+    if (!result.success && result.message.includes('Failed to connect')) {
+      return loginUserLocal(username, password);
+    }
+    
+    return result;
+  } catch (error) {
+    // Fallback to localStorage on error
+    return loginUserLocal(username, password);
   }
-  
-  return result;
 };
 
 // Legacy localStorage fallback
