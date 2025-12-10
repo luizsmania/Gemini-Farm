@@ -31,8 +31,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Check if username exists (first check to provide immediate feedback)
-    const exists = await usernameExists(username);
+    let exists: boolean;
+    try {
+      exists = await usernameExists(username);
+    } catch (checkError) {
+      console.error('Error checking username existence:', checkError);
+      // If check fails, we'll still try to create and let the database constraint handle it
+      exists = false;
+    }
+    
     if (exists) {
+      console.log(`Registration blocked: Username "${username}" already exists`);
       return res.status(400).json({ success: false, error: 'Username already exists. Please choose another.' });
     }
 
@@ -40,19 +49,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const passwordHash = hashPassword(password);
     let newUser: any;
     try {
+      console.log(`Attempting to create user: "${username}"`);
       newUser = await createUser(username, passwordHash);
+      console.log(`User created successfully: "${username}"`);
     } catch (createError: any) {
+      console.error(`Error creating user "${username}":`, createError);
       // Handle username already exists (race condition - someone registered between check and create)
       if (createError?.message === 'USERNAME_EXISTS' || createError?.code === '23505') {
+        console.log(`Registration blocked: Username "${username}" already exists (race condition)`);
         return res.status(400).json({ success: false, error: 'Username already exists. Please choose another.' });
       }
       throw createError; // Re-throw other errors
     }
 
     // Verify the user was actually created (double-check)
-    const verifyUser = await usernameExists(username);
-    if (!verifyUser) {
-      return res.status(500).json({ success: false, error: 'Failed to create account. Please try again.' });
+    try {
+      const verifyUser = await usernameExists(username);
+      if (!verifyUser) {
+        console.error(`Verification failed: User "${username}" was not found after creation`);
+        return res.status(500).json({ success: false, error: 'Failed to create account. Please try again.' });
+      }
+      console.log(`User verification successful: "${username}"`);
+    } catch (verifyError) {
+      console.error(`Error verifying user "${username}":`, verifyError);
+      // If verification fails but user was created, still return success
+      // The database constraint ensures uniqueness
     }
 
     return res.status(200).json({

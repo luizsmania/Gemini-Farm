@@ -149,11 +149,9 @@ export const registerUserAPI = async (username: string, password: string): Promi
       }),
     });
 
-    if (!response.ok) {
-      throw new Error('Failed to register user');
-    }
-
     const result: ApiResponse<{ user: User }> = await response.json();
+    
+    // Always parse the result, even if response is not ok
     if (result.success && result.data) {
       return {
         success: true,
@@ -161,7 +159,12 @@ export const registerUserAPI = async (username: string, password: string): Promi
         user: result.data.user,
       };
     }
-    return { success: false, message: result.error || 'Registration failed' };
+    
+    // Return the error message from the API
+    return { 
+      success: false, 
+      message: result.error || 'Registration failed. Please try again.' 
+    };
   } catch (error) {
     console.error('Error registering user:', error);
     return { success: false, message: 'Failed to connect to server. Please try again.' };

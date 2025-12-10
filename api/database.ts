@@ -145,10 +145,13 @@ export async function usernameExists(username: string): Promise<boolean> {
     const result = await sql`
       SELECT 1 FROM users WHERE username_lower = ${usernameLower} LIMIT 1
     `;
-    return result.rows.length > 0;
+    const exists = result.rows.length > 0;
+    console.log(`Username check: "${username}" (normalized: "${usernameLower}") exists: ${exists}`);
+    return exists;
   } catch (error) {
     console.error('Error checking username:', error);
-    return false;
+    // On error, return false but log it - this might indicate database connection issues
+    throw error; // Re-throw to let caller handle it
   }
 }
 
