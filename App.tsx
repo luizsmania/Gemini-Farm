@@ -193,26 +193,69 @@ const App: React.FC = () => {
         setIsLoadingSave(true);
         const loadData = async () => {
             try {
-                // Try to load from database first
-                const { loadGameState, saveGameState } = await import('./services/databaseService');
-                let parsed = await loadGameState(currentUser.username);
+                const { loadGameState, saveGameState, checkForUpdates } = await import('./services/databaseService');
                 
-                // Fallback to localStorage if database doesn't have data
-                if (!parsed) {
-                    const saveKey = `gemini_farm_save_${currentUser.username}`;
-                    const saved = localStorage.getItem(saveKey);
-                    if (saved) {
-                        parsed = JSON.parse(saved);
-                        // Migrate to database
-                        if (parsed) {
-                            await saveGameState(currentUser.username, parsed);
+                // Get stored metadata from localStorage
+                const metadataKey = `gemini_farm_metadata_${currentUser.username}`;
+                const storedMetadata = localStorage.getItem(metadataKey);
+                let lastKnownVersion: number | undefined;
+                let lastKnownUpdatedAt: number | undefined;
+                
+                if (storedMetadata) {
+                    try {
+                        const meta = JSON.parse(storedMetadata);
+                        lastKnownVersion = meta.version;
+                        lastKnownUpdatedAt = meta.updatedAt;
+                    } catch (e) {
+                        console.error('Error parsing stored metadata:', e);
+                    }
+                }
+                
+                // Check for updates on server
+                const updateCheck = await checkForUpdates(currentUser.username, lastKnownVersion, lastKnownUpdatedAt);
+                
+                let parsed: { gameState: any; metadata?: any } | null = null;
+                
+                // If there are updates, load from server
+                if (updateCheck.hasUpdates) {
+                    console.log('Updates available on server, loading...');
+                    parsed = await loadGameState(currentUser.username);
+                    
+                    // Store metadata if we got it
+                    if (parsed?.metadata) {
+                        localStorage.setItem(metadataKey, JSON.stringify(parsed.metadata));
+                    }
+                } else {
+                    // Try to load from database first
+                    parsed = await loadGameState(currentUser.username);
+                    
+                    // Store metadata if we got it
+                    if (parsed?.metadata) {
+                        localStorage.setItem(metadataKey, JSON.stringify(parsed.metadata));
+                    }
+                    
+                    // Fallback to localStorage if database doesn't have data
+                    if (!parsed) {
+                        const saveKey = `gemini_farm_save_${currentUser.username}`;
+                        const saved = localStorage.getItem(saveKey);
+                        if (saved) {
+                            const localState = JSON.parse(saved);
+                            parsed = { gameState: localState };
+                            // Migrate to database
+                            if (localState) {
+                                const saveResult = await saveGameState(currentUser.username, localState);
+                                if (saveResult.metadata) {
+                                    localStorage.setItem(metadataKey, JSON.stringify(saveResult.metadata));
+                                }
+                            }
                         }
                     }
                 }
                 
-                if (parsed) {
+                if (parsed?.gameState) {
+                    const parsedState = parsed.gameState;
                     // MIGRATION LOGIC
-                    let plots = parsed.plots || [];
+                    let plots = parsedState.plots || [];
                     // If plots are old format (no x,y), lay them out on grid
                     if (plots.length > 0 && typeof plots[0].x === 'undefined') {
                         plots = plots.map((p: any, i: number) => ({
@@ -224,10 +267,10 @@ const App: React.FC = () => {
                     
                     setGameState({
                         ...createDefaultGameState(),
-                        ...parsed,
-                        inventory: { ...INITIAL_INVENTORY, ...parsed.inventory },
-                        harvested: { ...INITIAL_HARVESTED, ...parsed.harvested },
-                        decorations: (parsed.decorations || []).map((d: any) => ({
+                        ...parsedState,
+                        inventory: { ...INITIAL_INVENTORY, ...parsedState.inventory },
+                        harvested: { ...INITIAL_HARVESTED, ...parsedState.harvested },
+                        decorations: (parsedState.decorations || []).map((d: any) => ({
                             ...d,
                             layer: d.layer || (DECORATIONS[d.typeId]?.type === 'walkable' ? 'ground' : 'overlay')
                         })),
@@ -237,27 +280,35 @@ const App: React.FC = () => {
                             hasSprinkler: p.hasSprinkler ?? false,
                             status: p.status === 'building' ? 'building' : p.status
                         })),
-                        missions: parsed.missions || initializeMissions(),
-                        achievements: parsed.achievements || initializeAchievements(),
+                        missions: parsedState.missions || initializeMissions(),
+                        achievements: parsedState.achievements || initializeAchievements(),
                         statistics: {
                             ...initializeStatistics(),
-                            ...parsed.statistics,
-                            plotsOwned: parsed.statistics?.plotsOwned || parsed.plots?.length || 0,
-                            totalPrestiges: parsed.statistics?.totalPrestiges || 0,
-                            maxCombo: parsed.statistics?.maxCombo || 0,
-                            perfectSeasons: parsed.statistics?.perfectSeasons || 0
+                            ...parsedState.statistics,
+                            plotsOwned: parsedState.statistics?.plotsOwned || parsedState.plots?.length || 0,
+                            totalPrestiges: parsedState.statistics?.totalPrestiges || 0,
+                            maxCombo: parsedState.statistics?.maxCombo || 0,
+                            perfectSeasons: parsedState.statistics?.perfectSeasons || 0
                         },
-                        dailyChallenge: parsed.dailyChallenge || null,
-                        lastDailyChallengeReset: parsed.lastDailyChallengeReset || Date.now(),
+                        dailyChallenge: parsedState.dailyChallenge || null,
+                        lastDailyChallengeReset: parsedState.lastDailyChallengeReset || Date.now(),
                         // New mechanics with defaults
-                        prestigeLevel: parsed.prestigeLevel || 0,
-                        prestigePoints: parsed.prestigePoints || 0,
-                        cropMastery: parsed.cropMastery || {},
-                        researchTree: parsed.researchTree || {},
-                        automationLevel: parsed.automationLevel || 0,
-                        comboBonus: parsed.comboBonus || 1,
-                        lastComboTime: parsed.lastComboTime || 0
+                        prestigeLevel: parsedState.prestigeLevel || 0,
+                        prestigePoints: parsedState.prestigePoints || 0,
+                        cropMastery: parsedState.cropMastery || {},
+                        researchTree: parsedState.researchTree || {},
+                        automationLevel: parsedState.automationLevel || 0,
+                        comboBonus: parsedState.comboBonus || 1,
+                        lastComboTime: parsedState.lastComboTime || 0
                     });
+                    
+                    // Show notification if updates were loaded
+                    if (updateCheck.hasUpdates) {
+                        showNotification({
+                            type: 'info',
+                            message: 'Your game has been updated with the latest save from the server!',
+                        });
+                    }
                 } else {
                     // Initialize default plots in a grid for new users
                     const initialPlots: PlotType[] = [];
@@ -280,7 +331,11 @@ const App: React.FC = () => {
                     setGameState(newState);
                     
                     // Save initial state to database
-                    await saveGameState(currentUser.username, newState);
+                    const saveResult = await saveGameState(currentUser.username, newState);
+                    if (saveResult.metadata) {
+                        const metadataKey = `gemini_farm_metadata_${currentUser.username}`;
+                        localStorage.setItem(metadataKey, JSON.stringify(saveResult.metadata));
+                    }
                 }
             } catch (e) {
                 console.error("Save load error", e);
@@ -301,10 +356,17 @@ const App: React.FC = () => {
             try {
                 // Save to database
                 const { saveGameState } = await import('./services/databaseService');
-                const saved = await saveGameState(currentUser.username, gameState);
+                const saveResult = await saveGameState(currentUser.username, gameState);
                 
-                if (saved) {
+                if (saveResult.success) {
                     setLastSaveTime(Date.now());
+                    
+                    // Store metadata if we got it
+                    if (saveResult.metadata) {
+                        const metadataKey = `gemini_farm_metadata_${currentUser.username}`;
+                        localStorage.setItem(metadataKey, JSON.stringify(saveResult.metadata));
+                    }
+                    
                     // Also save to localStorage as backup
                     const saveKey = `gemini_farm_save_${currentUser.username}`;
                     localStorage.setItem(saveKey, JSON.stringify(gameState));

@@ -1,32 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-
-interface Database {
-  users: Record<string, any>;
-  gameStates: Record<string, any>;
-}
-
-// In-memory database (for serverless functions)
-// NOTE: In production, replace this with a real database
-let db: Database = { users: {}, gameStates: {} };
-
-// For local development, try to read from file
-if (typeof process !== 'undefined' && process.env.VERCEL !== '1') {
-  try {
-    const fs = require('fs');
-    const path = require('path');
-    const DB_PATH = path.join(process.cwd(), 'api', 'db.json');
-    if (fs.existsSync(DB_PATH)) {
-      const data = fs.readFileSync(DB_PATH, 'utf-8');
-      db = JSON.parse(data);
-    }
-  } catch (error) {
-    console.error('Error reading database file:', error);
-  }
-}
-
-function readDB(): Database {
-  return db;
-}
+import { loadGameState, initDatabase } from './db';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
@@ -34,23 +7,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    // Initialize database on first request
+    await initDatabase();
+
     const { username } = req.query;
 
     if (!username || typeof username !== 'string') {
       return res.status(400).json({ success: false, error: 'Username is required' });
     }
 
-    const db = readDB();
-    const gameState = db.gameStates[username.toLowerCase()];
+    const result = await loadGameState(username);
 
-    if (!gameState) {
+    if (!result) {
       return res.status(200).json({ success: false, error: 'No save data found' });
     }
 
-    // Remove internal fields
-    const { lastSaved, ...cleanGameState } = gameState;
+    // Merge metadata into the response data structure
+    const responseData: any = result.gameState;
+    responseData.metadata = {
+      lastSaved: result.lastSaved,
+      updatedAt: result.updatedAt,
+      version: result.version,
+    };
 
-    return res.status(200).json({ success: true, data: cleanGameState });
+    return res.status(200).json({ 
+      success: true, 
+      data: responseData
+    });
   } catch (error) {
     console.error('Error loading game state:', error);
     return res.status(500).json({ success: false, error: 'Internal server error' });

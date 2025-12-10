@@ -9,7 +9,7 @@ interface ApiResponse<T> {
 }
 
 // Save game state for a user
-export const saveGameState = async (username: string, gameState: GameState): Promise<boolean> => {
+export const saveGameState = async (username: string, gameState: GameState): Promise<{ success: boolean; metadata?: { lastSaved: number; updatedAt: number; version: number } }> => {
   try {
     const response = await fetch(`${API_BASE_URL}/save`, {
       method: 'POST',
@@ -27,23 +27,31 @@ export const saveGameState = async (username: string, gameState: GameState): Pro
     }
 
     const result: ApiResponse<void> = await response.json();
-    return result.success || false;
+    if (result.success) {
+      // After saving, get the updated metadata
+      const loadResult = await loadGameState(username);
+      return { 
+        success: true,
+        metadata: loadResult?.metadata
+      };
+    }
+    return { success: false };
   } catch (error) {
     console.error('Error saving game state:', error);
     // Fallback to localStorage if API fails
     try {
       const saveKey = `gemini_farm_save_${username}`;
       localStorage.setItem(saveKey, JSON.stringify(gameState));
-      return true;
+      return { success: true };
     } catch (e) {
       console.error('Failed to save to localStorage fallback:', e);
-      return false;
+      return { success: false };
     }
   }
 };
 
 // Load game state for a user
-export const loadGameState = async (username: string): Promise<GameState | null> => {
+export const loadGameState = async (username: string): Promise<{ gameState: GameState; metadata?: { lastSaved: number; updatedAt: number; version: number } } | null> => {
   try {
     const response = await fetch(`${API_BASE_URL}/load?username=${encodeURIComponent(username)}`, {
       method: 'GET',
@@ -56,9 +64,14 @@ export const loadGameState = async (username: string): Promise<GameState | null>
       throw new Error('Failed to load game state');
     }
 
-    const result: ApiResponse<GameState> = await response.json();
+    const result: ApiResponse<GameState & { metadata?: { lastSaved: number; updatedAt: number; version: number } }> = await response.json();
     if (result.success && result.data) {
-      return result.data;
+      const data = result.data as any;
+      const { metadata, ...gameState } = data;
+      return { 
+        gameState: gameState as GameState,
+        metadata: metadata || (result as any).metadata
+      };
     }
     return null;
   } catch (error) {
@@ -68,12 +81,57 @@ export const loadGameState = async (username: string): Promise<GameState | null>
       const saveKey = `gemini_farm_save_${username}`;
       const saved = localStorage.getItem(saveKey);
       if (saved) {
-        return JSON.parse(saved);
+        return { gameState: JSON.parse(saved) };
       }
     } catch (e) {
       console.error('Failed to load from localStorage fallback:', e);
     }
     return null;
+  }
+};
+
+// Check for updates on the server
+export const checkForUpdates = async (
+  username: string, 
+  lastKnownVersion?: number, 
+  lastKnownUpdatedAt?: number
+): Promise<{ hasUpdates: boolean; serverVersion?: number; serverUpdatedAt?: number; lastSaved?: number }> => {
+  try {
+    const params = new URLSearchParams({ username });
+    if (lastKnownVersion !== undefined) {
+      params.append('lastKnownVersion', lastKnownVersion.toString());
+    }
+    if (lastKnownUpdatedAt !== undefined) {
+      params.append('lastKnownUpdatedAt', lastKnownUpdatedAt.toString());
+    }
+
+    const response = await fetch(`${API_BASE_URL}/check-updates?${params.toString()}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to check for updates');
+    }
+
+    const result: ApiResponse<{ 
+      hasUpdates: boolean; 
+      serverVersion?: number; 
+      serverUpdatedAt?: number; 
+      lastSaved?: number;
+      clientVersion?: number;
+      clientUpdatedAt?: number;
+    }> = await response.json();
+    
+    if (result.success && result.data) {
+      return result.data;
+    }
+    return { hasUpdates: false };
+  } catch (error) {
+    console.error('Error checking for updates:', error);
+    return { hasUpdates: false };
   }
 };
 
