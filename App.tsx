@@ -510,10 +510,12 @@ const App: React.FC = () => {
 
   // 1. Mouse Down (Start Drag or Click)
   const handleGridMouseDown = (x: number, y: number, event?: React.MouseEvent | React.TouchEvent) => {
-    // Prevent default for touch events
+    // Prevent default for touch events and prevent scrolling
     if (event && 'touches' in event) {
       event.preventDefault();
       event.stopPropagation();
+      // Prevent body scroll during drag
+      document.body.classList.add('dragging');
     }
     
     // A. Edit Mode Drag Start
@@ -569,11 +571,18 @@ const App: React.FC = () => {
   };
 
   // 2. Mouse Up (End Drag / Drop)
-  const handleGridMouseUp = (x: number, y: number) => {
+  const handleGridMouseUp = (x: number, y: number, event?: React.MouseEvent | React.TouchEvent) => {
+      // Remove dragging class to restore scrolling
+      if (event && 'touches' in event) {
+        document.body.classList.remove('dragging');
+      }
+      
       // A. Farming Mode Drag End
       if (!isEditMode) {
           setIsDragging(false);
           setDragAction(null);
+          lastProcessedPlotRef.current = null;
+          lastProcessedTimeRef.current = 0;
           return;
       }
 
@@ -675,13 +684,21 @@ const App: React.FC = () => {
       
       const crop = CROPS[selectedSeed];
       
-      // Show notification
-      showNotification({
-        type: 'success',
-        title: `Planted ${crop.name}`,
-        message: `${crop.emoji} Growing...`,
-        duration: 1000
+      // Play sound
+      import('./services/soundService').then(({ soundService }) => {
+        soundService.plant();
       });
+
+      // Only show notification if not dragging (to reduce spam during drag planting)
+      if (!isDragging) {
+        showNotification({
+          type: 'success',
+          title: `Planted ${crop.name}`,
+          message: `${crop.emoji}`,
+          duration: 800,
+          groupKey: `plant-${selectedSeed}`
+        });
+      }
 
       setGameState(prev => ({
           ...prev,
@@ -721,6 +738,11 @@ const App: React.FC = () => {
         const newXp = prev.xp + totalXp;
         const newLevel = checkLevelUp(newXp, prev.level);
         
+        // Play sound
+        import('./services/soundService').then(({ soundService }) => {
+          soundService.harvest();
+        });
+
         // Show harvest notification (only if no quest completion to avoid spam)
         if (!(bonusCoins > 0 && bonusXp > 0)) {
           showNotification({
@@ -735,6 +757,9 @@ const App: React.FC = () => {
         // Check for level up
         if (newLevel > prev.level) {
           setTimeout(() => {
+            import('./services/soundService').then(({ soundService }) => {
+              soundService.levelUp();
+            });
             showNotification({
               type: 'level',
               title: `Level Up!`,
@@ -769,14 +794,21 @@ const App: React.FC = () => {
       const plot = gameState.plots.find(p => p.id === plotId);
       if (!plot || plot.status !== 'growing' || plot.isWatered) return;
 
-      // Show notification
-      showNotification({
-        type: 'info',
-        title: 'Watered',
-        message: '💧 Crop is now hydrated!',
-        duration: 1000,
-        groupKey: 'water' // Group all watering notifications
+      // Play sound
+      import('./services/soundService').then(({ soundService }) => {
+        soundService.water();
       });
+
+      // Only show notification if not dragging (to reduce spam during drag watering)
+      if (!isDragging) {
+        showNotification({
+          type: 'info',
+          title: 'Watered',
+          message: '💧',
+          duration: 800,
+          groupKey: 'water' // Group all watering notifications
+        });
+      }
 
       setGameState(prev => ({
           ...prev,
@@ -900,6 +932,9 @@ const App: React.FC = () => {
   // --- Global Mouse/Touch Up ---
   useEffect(() => {
     const handleWindowUp = (e: MouseEvent | TouchEvent) => {
+      // Remove dragging class to restore scrolling
+      document.body.classList.remove('dragging');
+      
       // Don't interfere with button clicks or other interactive elements
       const target = e.target as HTMLElement;
       if (target.closest('button') || target.closest('[role="button"]') || target.closest('input') || target.closest('textarea')) {
@@ -911,18 +946,20 @@ const App: React.FC = () => {
       lastProcessedTimeRef.current = 0;
     };
     const handleTouchCancel = () => {
+      document.body.classList.remove('dragging');
       setIsDragging(false);
       setDragAction(null);
       lastProcessedPlotRef.current = null;
       lastProcessedTimeRef.current = 0;
     };
     window.addEventListener('mouseup', handleWindowUp);
-    window.addEventListener('touchend', handleWindowUp, { passive: true });
-    window.addEventListener('touchcancel', handleTouchCancel, { passive: true });
+    window.addEventListener('touchend', handleWindowUp, { passive: false });
+    window.addEventListener('touchcancel', handleTouchCancel, { passive: false });
     return () => {
       window.removeEventListener('mouseup', handleWindowUp);
       window.removeEventListener('touchend', handleWindowUp);
       window.removeEventListener('touchcancel', handleTouchCancel);
+      document.body.classList.remove('dragging');
     };
   }, []);
 
@@ -960,7 +997,7 @@ const App: React.FC = () => {
                   <div 
                     key={`${x}-${y}`} 
                     onMouseDown={() => handleGridMouseDown(x, y)}
-                    onMouseUp={() => handleGridMouseUp(x, y)}
+                    onMouseUp={(e) => handleGridMouseUp(x, y, e)}
                     onMouseEnter={() => handleGridMouseEnter(x, y)}
                     onTouchStart={(e) => {
                       e.preventDefault();
@@ -970,7 +1007,7 @@ const App: React.FC = () => {
                     onTouchEnd={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      handleGridMouseUp(x, y);
+                      handleGridMouseUp(x, y, e);
                     }}
                     onTouchMove={(e) => {
                       e.preventDefault();
