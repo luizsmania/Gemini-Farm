@@ -73,8 +73,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUsername, onClose
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-800 rounded-lg shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4">
+      <div className="bg-slate-800 rounded-lg shadow-2xl w-full max-w-6xl max-h-[95vh] sm:max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-slate-700">
           <div className="flex items-center gap-2">
@@ -90,9 +90,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUsername, onClose
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-hidden flex">
+        <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
           {/* Users List */}
-          <div className="w-1/3 border-r border-slate-700 overflow-y-auto">
+          <div className="w-full md:w-1/3 border-b md:border-b-0 md:border-r border-slate-700 overflow-y-auto max-h-[40vh] md:max-h-none">
             <div className="p-4">
               <div className="flex items-center gap-2 mb-4">
                 <Users className="w-5 h-5 text-slate-400" />
@@ -129,7 +129,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUsername, onClose
           </div>
 
           {/* User Details */}
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 overflow-y-auto p-4 max-h-[50vh] md:max-h-none">
             {selectedUser ? (
               <div>
                 <div className="flex items-center justify-between mb-4">

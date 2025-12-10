@@ -2572,7 +2572,12 @@ const App: React.FC = () => {
         </div>
 
         {/* Mobile Navigation */}
-        <MobileNav activeTab={activeTab} onTabChange={setActiveTab} />
+        <MobileNav 
+          activeTab={activeTab} 
+          onTabChange={setActiveTab}
+          isAdmin={currentUser?.isAdmin}
+          onAdminClick={() => setShowAdminPanel(true)}
+        />
     </div>
   );
 };

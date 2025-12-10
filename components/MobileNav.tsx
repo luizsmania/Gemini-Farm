@@ -1,15 +1,18 @@
 
 import React from 'react';
-import { LayoutGrid, Store, TrendingUp, Target, Trophy } from 'lucide-react';
+import { LayoutGrid, Store, TrendingUp, Target, Trophy, Shield } from 'lucide-react';
+import { safePreventDefault } from '../utils/eventHelpers';
 
 type Tab = 'field' | 'shop' | 'market' | 'missions' | 'achievements';
 
 interface MobileNavProps {
   activeTab: Tab;
   onTabChange: (tab: Tab) => void;
+  isAdmin?: boolean;
+  onAdminClick?: () => void;
 }
 
-export const MobileNav: React.FC<MobileNavProps> = ({ activeTab, onTabChange }) => {
+export const MobileNav: React.FC<MobileNavProps> = ({ activeTab, onTabChange, isAdmin, onAdminClick }) => {
   const tabs: { id: Tab; icon: React.ReactNode; label: string }[] = [
     { id: 'field', icon: <LayoutGrid size={20} />, label: 'Field' },
     { id: 'shop', icon: <Store size={20} />, label: 'Shop' },
@@ -25,6 +28,10 @@ export const MobileNav: React.FC<MobileNavProps> = ({ activeTab, onTabChange }) 
           <button
             key={tab.id}
             onClick={() => onTabChange(tab.id)}
+            onTouchEnd={(e) => {
+              safePreventDefault(e);
+              onTabChange(tab.id);
+            }}
             className={`
               flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-xl transition-all
               ${activeTab === tab.id
@@ -38,6 +45,25 @@ export const MobileNav: React.FC<MobileNavProps> = ({ activeTab, onTabChange }) 
             <span className="text-xs font-medium">{tab.label}</span>
           </button>
         ))}
+        {isAdmin && onAdminClick && (
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onAdminClick();
+            }}
+            onTouchEnd={(e) => {
+              safePreventDefault(e);
+              onAdminClick();
+            }}
+            className="flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-xl transition-all text-emerald-400 hover:text-emerald-300 active:scale-95"
+            style={{ minWidth: '60px' }}
+            title="Admin Panel"
+          >
+            <Shield size={20} />
+            <span className="text-xs font-medium">Admin</span>
+          </button>
+        )}
       </div>
     </nav>
   );
