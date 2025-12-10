@@ -17,13 +17,39 @@ if ('serviceWorker' in navigator && !import.meta.env.PROD) {
 // Register Service Worker for PWA (only in production)
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
+    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
       .then((registration) => {
         console.log('SW registered: ', registration);
+        
+        // Check for updates every time the page loads
+        registration.update();
+        
+        // Listen for updates
+        registration.addEventListener('updatefound', () => {
+          const newWorker = registration.installing;
+          if (newWorker) {
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                // New service worker available, reload to use it
+                console.log('New service worker available, reloading...');
+                window.location.reload();
+              }
+            });
+          }
+        });
       })
       .catch((registrationError) => {
         console.log('SW registration failed: ', registrationError);
       });
+    
+    // Check for updates periodically
+    setInterval(() => {
+      navigator.serviceWorker.getRegistration().then((registration) => {
+        if (registration) {
+          registration.update();
+        }
+      });
+    }, 60000); // Check every minute
   });
 }
 
