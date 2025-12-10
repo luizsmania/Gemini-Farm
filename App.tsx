@@ -37,6 +37,7 @@ import { ParticleEffects } from './components/ParticleEffects';
 import { WeatherEffects } from './components/WeatherEffects';
 import { PrestigePanel } from './components/PrestigePanel';
 import { MobileNav } from './components/MobileNav';
+import { safePreventDefault } from './utils/eventHelpers';
 
 type Tab = 'field' | 'shop' | 'market' | 'missions' | 'achievements';
 type DragAction = 'plant' | 'harvest' | 'water' | null;
@@ -816,8 +817,7 @@ const App: React.FC = () => {
   const handleGridMouseDown = (x: number, y: number, event?: React.MouseEvent | React.TouchEvent) => {
     // Prevent default for touch events and prevent scrolling
     if (event && 'touches' in event) {
-      event.preventDefault();
-      event.stopPropagation();
+      safePreventDefault(event);
       // Prevent body scroll during drag
       document.body.classList.add('dragging');
     }
@@ -878,8 +878,7 @@ const App: React.FC = () => {
   const handleGridMouseUp = (x: number, y: number, event?: React.MouseEvent | React.TouchEvent) => {
       // Prevent default for touch events
       if (event && 'touches' in event) {
-        event.preventDefault();
-        event.stopPropagation();
+        safePreventDefault(event);
       }
       // Remove dragging class to restore scrolling
       if (event && 'touches' in event) {
@@ -1307,8 +1306,7 @@ const App: React.FC = () => {
       
       // Prevent default to avoid scrolling on mobile
       if (event) {
-        event.preventDefault();
-        event.stopPropagation();
+        safePreventDefault(event);
       }
 
       let action: DragAction = null;
@@ -1350,8 +1348,7 @@ const App: React.FC = () => {
   
   const handleTouchMove = (plotId: number, event: React.TouchEvent) => {
       if (!isDragging || !dragAction || isEditMode) return;
-      event.preventDefault();
-      event.stopPropagation();
+      safePreventDefault(event);
       const plot = gameState.plots.find(p => p.id === plotId);
       if (!plot) return;
       
@@ -1441,34 +1438,17 @@ const App: React.FC = () => {
                     }}
                     onMouseEnter={() => handleGridMouseEnter(x, y)}
                     onTouchStart={(e) => {
-                      // Wrap in try-catch to handle passive listener errors
-                      try {
-                        e.preventDefault();
-                        e.stopPropagation();
-                      } catch (err) {
-                        // Ignore if preventDefault fails (passive listener)
-                      }
+                      safePreventDefault(e);
                       handleGridMouseDown(x, y, e);
                     }}
                     onTouchEnd={(e) => {
-                      try {
-                        e.preventDefault();
-                        e.stopPropagation();
-                      } catch (err) {
-                        // Ignore if preventDefault fails (passive listener)
-                      }
+                      safePreventDefault(e);
                       handleGridMouseUp(x, y, e);
                     }}
                     onTouchMove={(e) => {
                       // Only prevent default if we're actually dragging/interacting
-                      // Wrap in try-catch to handle passive listener errors
                       if (isDragging || isEditMode) {
-                        try {
-                          e.preventDefault();
-                          e.stopPropagation();
-                        } catch (err) {
-                          // Ignore if preventDefault fails (passive listener)
-                        }
+                        safePreventDefault(e);
                       }
                       
                       // Handle edit mode drag
@@ -1830,8 +1810,7 @@ const App: React.FC = () => {
                                 setShowQuestBoard(false);
                             }}
                             onTouchEnd={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
+                                safePreventDefault(e);
                                 setShowMarketAnalyst(!showMarketAnalyst);
                                 setShowQuestBoard(false);
                             }}
@@ -1852,8 +1831,7 @@ const App: React.FC = () => {
                                 setShowMarketAnalyst(false);
                             }}
                             onTouchEnd={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
+                                safePreventDefault(e);
                                 setShowQuestBoard(!showQuestBoard);
                                 setShowMarketAnalyst(false);
                             }}
@@ -1912,8 +1890,7 @@ const App: React.FC = () => {
                                 setEditDragItem(null);
                             }}
                             onTouchEnd={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
+                                safePreventDefault(e);
                                 setIsEditMode(!isEditMode);
                                 setEditDragItem(null);
                             }}
@@ -1967,8 +1944,7 @@ const App: React.FC = () => {
                                               setSelectedDecorationToPlace(null);
                                           }}
                                           onTouchEnd={(e) => {
-                                              e.preventDefault();
-                                              e.stopPropagation();
+                                              safePreventDefault(e);
                                               setSelectedBuildingToPlace(null);
                                               setPlacingSprinkler(false);
                                               setSelectedDecorationToPlace(null);
@@ -2000,8 +1976,7 @@ const App: React.FC = () => {
                                                       setSelectedSeed(crop.id);
                                                   }}
                                                   onTouchEnd={(e) => {
-                                                      e.preventDefault();
-                                                      e.stopPropagation();
+                                                      safePreventDefault(e);
                                                       setSelectedSeed(crop.id);
                                                   }}
                                                   className={`relative flex flex-col items-center p-2.5 rounded-xl min-w-[75px] border-2 transition-all active:scale-95 touch-manipulation ${
@@ -2150,8 +2125,7 @@ const App: React.FC = () => {
                                              setActiveTab('field');
                                          }}
                                          onTouchEnd={(e) => {
-                                             e.preventDefault();
-                                             e.stopPropagation();
+                                             safePreventDefault(e);
                                              setActiveTab('field');
                                          }}
                                          variant="primary"
@@ -2170,17 +2144,15 @@ const App: React.FC = () => {
                                      const isTrending = marketTrend?.cropId === item.id;
                                      const price = isTrending && marketTrend ? Math.floor(item.baseSellPrice * marketTrend.multiplier) : item.baseSellPrice;
                                      
-                                     const handleSellOne = (e: React.MouseEvent | React.TouchEvent) => {
-                                         e.preventDefault();
-                                         e.stopPropagation();
-                                         handleSell(item.id, 1, price);
-                                     };
-                                     
-                                     const handleSellAll = (e: React.MouseEvent | React.TouchEvent) => {
-                                         e.preventDefault();
-                                         e.stopPropagation();
-                                         handleSell(item.id, count, price);
-                                     };
+                                    const handleSellOne = (e: React.MouseEvent | React.TouchEvent) => {
+                                        safePreventDefault(e);
+                                        handleSell(item.id, 1, price);
+                                    };
+                                    
+                                    const handleSellAll = (e: React.MouseEvent | React.TouchEvent) => {
+                                        safePreventDefault(e);
+                                        handleSell(item.id, count, price);
+                                    };
                                      
                                      return (
                                         <div key={item.id} className="bg-slate-800/50 rounded-xl p-4 border border-white/5 hover:bg-slate-800/80 transition-colors">

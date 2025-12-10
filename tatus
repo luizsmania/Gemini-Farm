@@ -1,0 +1,41 @@
+[33me8b43d7[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m fix: add null safety checks for dailyChallenge and missions/achievements
+[33m21346da[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m code cleanup, files cleanup, new readme file
+[33m1843ad9[m Fix: Immediate WebSocket sync after planting and harvesting
+[33m3c4f941[m Fix: Safe merge of WebSocket gameState updates to prevent null errors
+[33medfa10e[m Fix: Add server.js and update package-lock.json for Railway
+[33m4946153[m Add server.js - WebSocket server with ES modules
+[33m804586e[m Force Railway redeploy
+[33mf5a66e0[m Fix: Convert WebSocket server to ES modules and add socket.io dependency
+[33mdaf0ce6[m 12 12 12
+[33meae6ddc[m commited
+[33m6b507e2[m fix
+[33m2447ed8[m Add admin creation endpoints
+[33m178caa9[m admin panel created
+[33m30a8977[m Fix module imports for Vercel deployment
+[33mf4d38c7[m commit
+[33mdab4467[m commitex
+[33mec6f963[m deployed
+[33m4c59cec[m Commit
+[33m93d673d[m commited
+[33m11ea5b3[m .
+[33m2d54863[m fixed deployment bug
+[33me08f3cf[m added postgresql
+[33me2be03a[m deployment issue
+[33m83e5ebc[m Update vercel.json
+[33m5fd66f5[m Update vercel.json
+[33m01c2e80[m Update vercel.json
+[33mb340593[m Update vercel.json
+[33m06f9370[m Update
+[33mea753e2[m commit
+[33m31039a2[m fix bug plot buy mobile
+[33m7019db3[m sounds
+[33me646033[m committ
+[33m2e7ae70[m test
+[33m7936a43[m vercel
+[33m00284ed[m touch
+[33m24cf2b1[m .
+[33m0b5f2e5[m commited
+[33m2bcbd21[m .
+[33mcfbcc01[m .
+[33m65c1a97[m feat: Initialize Gemini Farm Tycoon project
+[33m781c5a5[m Initial commit

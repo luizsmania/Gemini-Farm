@@ -4,6 +4,7 @@ import { CropId, BuildingId, DecorationId } from '../types';
 import { CROPS, BUILDINGS, DECORATIONS, PLOT_COST_BASE, PLOT_COST_MULTIPLIER, MAX_PLOTS, SPRINKLER_COST } from '../constants';
 import { Button } from './Button';
 import { Coins, Sprout, Factory, Waves, LandPlot, ArrowUpCircle, Flower } from 'lucide-react';
+import { safePreventDefault } from '../utils/eventHelpers';
 
 interface ShopProps {
   coins: number;
@@ -46,8 +47,7 @@ export const Shop: React.FC<ShopProps> = ({
                     onBuyPlot();
                 }}
                 onTouchEnd={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
+                    safePreventDefault(e);
                     if (!isMaxPlots && coins >= nextPlotCost) {
                         onBuyPlot();
                     }
@@ -76,8 +76,7 @@ export const Shop: React.FC<ShopProps> = ({
                     onBuySprinkler();
                 }}
                 onTouchEnd={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
+                    safePreventDefault(e);
                     if (coins >= SPRINKLER_COST) {
                         onBuySprinkler();
                     }
@@ -141,8 +140,7 @@ export const Shop: React.FC<ShopProps> = ({
                                     onBuySeed(crop.id, 1);
                                 }}
                                 onTouchEnd={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
+                                    safePreventDefault(e);
                                     if (!isLocked && coins >= crop.buyPrice) {
                                         onBuySeed(crop.id, 1);
                                     }
@@ -161,8 +159,7 @@ export const Shop: React.FC<ShopProps> = ({
                                     onBuySeed(crop.id, 5);
                                 }}
                                 onTouchEnd={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
+                                    safePreventDefault(e);
                                     if (!isLocked && coins >= crop.buyPrice*5) {
                                         onBuySeed(crop.id, 5);
                                     }
@@ -199,8 +196,7 @@ export const Shop: React.FC<ShopProps> = ({
                                 onBuyBuilding(b.id);
                             }}
                             onTouchEnd={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
+                                safePreventDefault(e);
                                 if (!isLocked && coins >= b.cost) {
                                     onBuyBuilding(b.id);
                                 }
@@ -233,8 +229,7 @@ export const Shop: React.FC<ShopProps> = ({
                            onBuyDecoration(d.id);
                        }}
                        onTouchEnd={(e) => {
-                           e.preventDefault();
-                           e.stopPropagation();
+                           safePreventDefault(e);
                            if (coins >= d.cost) {
                                onBuyDecoration(d.id);
                            }
