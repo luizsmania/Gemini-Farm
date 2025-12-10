@@ -109,7 +109,9 @@ io.on('connection', async (socket) => {
 
       // Save to database via API
       try {
-        const apiUrl = process.env.API_URL || process.env.VERCEL_URL || 'https://your-app.vercel.app';
+        const apiUrl = process.env.API_URL || process.env.VERCEL_URL || 'https://gemini-farm-umber.vercel.app';
+        console.log(`Saving game state for ${username} via API: ${apiUrl}/api/save`);
+        
         const response = await fetch(`${apiUrl}/api/save`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -118,31 +120,50 @@ io.on('connection', async (socket) => {
         
         if (response.ok) {
           const saveResult = await response.json();
+          console.log(`Save result for ${username}:`, saveResult);
+          
           if (saveResult.success) {
-            // Get updated version from load endpoint
-            const loadResponse = await fetch(`${apiUrl}/api/load?username=${encodeURIComponent(username)}`, {
-              headers: {
-                'Content-Type': 'application/json',
-              },
+            // Broadcast directly with the received gameState (don't wait for load)
+            // This is faster and ensures we send the exact state that was saved
+            const roomName = `user:${username}`;
+            const clientsInRoom = io.sockets.adapter.rooms.get(roomName);
+            const clientCount = clientsInRoom ? clientsInRoom.size : 0;
+            
+            console.log(`Broadcasting to room ${roomName}, ${clientCount} clients connected`);
+            
+            // Broadcast to other devices of the same user (but not the sender)
+            socket.to(roomName).emit('gameStateUpdate', {
+              username,
+              gameState,
+              version: version + 1,
             });
-            if (loadResponse.ok) {
-              const loadResult = await loadResponse.json();
-              if (loadResult.success && loadResult.data) {
-                const { metadata, ...gameStateData } = loadResult.data;
-                const newVersion = metadata?.version || version + 1;
-                
-                // Broadcast to other devices of the same user (but not the sender)
-                const roomName = `user:${username}`;
-                socket.to(roomName).emit('gameStateUpdate', {
-                  username,
-                  gameState: gameStateData,
-                  version: newVersion,
-                });
 
-                console.log(`Broadcasted game state update to other devices of ${username}`);
+            console.log(`✅ Broadcasted game state update to other devices of ${username} (version ${version + 1})`);
+            
+            // Also try to get updated version for confirmation (optional)
+            try {
+              const loadResponse = await fetch(`${apiUrl}/api/load?username=${encodeURIComponent(username)}`, {
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+              });
+              if (loadResponse.ok) {
+                const loadResult = await loadResponse.json();
+                if (loadResult.success && loadResult.data) {
+                  const { metadata } = loadResult.data;
+                  const actualVersion = metadata?.version || version + 1;
+                  console.log(`Confirmed version after save: ${actualVersion}`);
+                }
               }
+            } catch (loadError) {
+              // Non-critical, just for logging
+              console.warn('Could not confirm version after save:', loadError);
             }
+          } else {
+            console.error(`Save failed for ${username}:`, saveResult);
           }
+        } else {
+          console.error(`Save API returned error for ${username}:`, response.status, response.statusText);
         }
       } catch (error) {
         console.error('Error saving game state:', error);

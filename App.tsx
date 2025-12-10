@@ -996,15 +996,40 @@ const App: React.FC = () => {
         });
       }
 
-      setGameState(prev => ({
-          ...prev,
-          plots: prev.plots.map(p => p.id === plotId && p.status === 'empty' ? { ...p, status: 'growing', cropId: selectedSeed, plantedAt: Date.now(), isWatered: false } : p),
-          inventory: { ...prev.inventory, [selectedSeed]: prev.inventory[selectedSeed] - 1 },
-          statistics: {
-              ...prev.statistics,
-              cropsPlanted: prev.statistics.cropsPlanted + 1
-          }
-      }));
+      setGameState(prev => {
+          const newState = {
+              ...prev,
+              plots: prev.plots.map(p => p.id === plotId && p.status === 'empty' ? { ...p, status: 'growing', cropId: selectedSeed, plantedAt: Date.now(), isWatered: false } : p),
+              inventory: { ...prev.inventory, [selectedSeed]: prev.inventory[selectedSeed] - 1 },
+              statistics: {
+                  ...prev.statistics,
+                  cropsPlanted: prev.statistics.cropsPlanted + 1
+              }
+          };
+          
+          // Force immediate save after planting to sync via WebSocket
+          // Use setTimeout to ensure state is updated before saving
+          setTimeout(async () => {
+              if (currentUser) {
+                  try {
+                      const { saveGameState } = await import('./services/databaseService');
+                      const saveResult = await saveGameState(currentUser.username, newState);
+                      
+                      if (saveResult.success && saveResult.metadata) {
+                          // Send update via WebSocket for real-time sync
+                          if (websocketService.isConnected()) {
+                              websocketService.sendGameStateUpdate(newState, saveResult.metadata.version);
+                              console.log('Planted seed - state saved and sent via WebSocket');
+                          }
+                      }
+                  } catch (error) {
+                      console.error('Error saving after planting:', error);
+                  }
+              }
+          }, 200);
+          
+          return newState;
+      });
   };
 
   const handleHarvest = (plotId: number) => {
@@ -1139,7 +1164,7 @@ const App: React.FC = () => {
         const newTotalHarvested = { ...prev.statistics.totalHarvested };
         newTotalHarvested[crop.id] = (newTotalHarvested[crop.id] || 0) + 1;
 
-        return {
+        const newState = {
             ...prev,
             xp: newXp,
             level: newLevel,
@@ -1157,6 +1182,29 @@ const App: React.FC = () => {
                 maxCombo: Math.max(prev.statistics.maxCombo || 0, Math.floor(newComboBonus))
             }
         };
+        
+        // Force immediate save after harvest to sync via WebSocket
+        // Use setTimeout to ensure state is updated before saving
+        setTimeout(async () => {
+            if (currentUser) {
+                try {
+                    const { saveGameState } = await import('./services/databaseService');
+                    const saveResult = await saveGameState(currentUser.username, newState);
+                    
+                    if (saveResult.success && saveResult.metadata) {
+                        // Send update via WebSocket for real-time sync
+                        if (websocketService.isConnected()) {
+                            websocketService.sendGameStateUpdate(newState, saveResult.metadata.version);
+                            console.log('Harvested crop - state saved and sent via WebSocket');
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error saving after harvest:', error);
+                }
+            }
+        }, 200);
+        
+        return newState;
     });
   };
 
