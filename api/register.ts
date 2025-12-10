@@ -82,6 +82,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         user: {
           username: newUser.username,
           createdAt: newUser.createdAt,
+          isAdmin: newUser.isAdmin,
         },
       },
     });

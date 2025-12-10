@@ -156,7 +156,10 @@ export const registerUserAPI = async (username: string, password: string): Promi
       return {
         success: true,
         message: 'Account created successfully! Welcome to Gemini Farm!',
-        user: result.data.user,
+        user: {
+          ...result.data.user,
+          isAdmin: result.data.user.isAdmin || false,
+        },
       };
     }
     
@@ -194,7 +197,10 @@ export const loginUserAPI = async (username: string, password: string): Promise<
       return {
         success: true,
         message: `Welcome back, ${result.data.user.username}!`,
-        user: result.data.user,
+        user: {
+          ...result.data.user,
+          isAdmin: result.data.user.isAdmin || false,
+        },
       };
     }
     return { success: false, message: result.error || 'Login failed' };

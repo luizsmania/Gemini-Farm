@@ -5,6 +5,7 @@ import { Decoration } from './components/Decoration';
 import { MarketAnalyst } from './components/MarketAnalyst';
 import { QuestBoard } from './components/QuestBoard';
 import { AuthScreen } from './components/AuthScreen';
+import { AdminPanel } from './components/AdminPanel';
 import { checkSession, logoutUser, getUserInfo } from './services/authService';
 import { 
   GameState, CropId, MarketTrend, Weather, Season, Plot as PlotType, 
@@ -25,7 +26,7 @@ import {
 } from './services/missionService';
 import { 
   Coins, Sprout, Store, TrendingUp, X, LogOut, MessageCircle, 
-  LayoutGrid, MousePointer2, Move, Star, Loader2, Trophy, Target, Calendar, Droplets, CheckCircle
+  LayoutGrid, MousePointer2, Move, Star, Loader2, Trophy, Target, Calendar, Droplets, CheckCircle, Shield
 } from 'lucide-react';
 import { Button } from './components/Button';
 import { Notification, NotificationItem } from './components/Notification';
@@ -118,6 +119,7 @@ const App: React.FC = () => {
   // UI
   const [showBuildingMenu, setShowBuildingMenu] = useState<number | null>(null);
   const [showAccountInfo, setShowAccountInfo] = useState(false);
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [lastSaveTime, setLastSaveTime] = useState<number | null>(null);
   const [isLoadingSave, setIsLoadingSave] = useState(false);
   
@@ -1446,10 +1448,31 @@ const App: React.FC = () => {
                                                 <div>Progress is automatically saved</div>
                                                 <div className="text-emerald-400">Your farm data is secure</div>
                                             </div>
+                                            {currentUser.isAdmin && (
+                                                <button
+                                                    onClick={() => {
+                                                        setShowAccountInfo(false);
+                                                        setShowAdminPanel(true);
+                                                    }}
+                                                    className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors text-sm font-semibold"
+                                                >
+                                                    <Shield size={14} />
+                                                    Admin Panel
+                                                </button>
+                                            )}
                                         </>
                                     );
                                 })()}
                             </div>
+                         )}
+                         {currentUser.isAdmin && (
+                            <button 
+                                onClick={() => setShowAdminPanel(true)} 
+                                className="p-1.5 sm:p-2 bg-slate-800 hover:bg-emerald-500/20 text-emerald-400 rounded-full transition-colors" 
+                                title="Admin Panel"
+                            >
+                                <Shield size={14} />
+                            </button>
                          )}
                          <button onClick={handleLogout} className="p-1.5 sm:p-2 bg-slate-800 hover:bg-red-500/20 text-slate-400 rounded-full transition-colors" title="Logout">
                             <LogOut size={14} />
@@ -2212,6 +2235,14 @@ const App: React.FC = () => {
             coins={questReward.coins}
             xp={questReward.xp}
             onComplete={() => setQuestReward(null)}
+          />
+        )}
+
+        {/* Admin Panel */}
+        {showAdminPanel && currentUser && currentUser.isAdmin && (
+          <AdminPanel
+            currentUsername={currentUser.username}
+            onClose={() => setShowAdminPanel(false)}
           />
         )}
 

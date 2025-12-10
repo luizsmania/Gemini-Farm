@@ -11,10 +11,17 @@ export async function initDatabase() {
         username VARCHAR(50) UNIQUE NOT NULL,
         username_lower VARCHAR(50) UNIQUE NOT NULL,
         password_hash VARCHAR(255) NOT NULL,
+        is_admin BOOLEAN NOT NULL DEFAULT FALSE,
         created_at BIGINT NOT NULL,
         last_login_at BIGINT,
         updated_at BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT * 1000
       )
+    `;
+    
+    // Add is_admin column if it doesn't exist (for existing databases)
+    await sql`
+      ALTER TABLE users 
+      ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE
     `;
 
     // Create game_states table
@@ -51,11 +58,12 @@ export async function initDatabase() {
 export interface StoredUser {
   username: string;
   passwordHash: string;
+  isAdmin: boolean;
   createdAt: number;
   lastLoginAt?: number;
 }
 
-export async function createUser(username: string, passwordHash: string): Promise<StoredUser> {
+export async function createUser(username: string, passwordHash: string, isAdmin: boolean = false): Promise<StoredUser> {
   const now = Date.now();
   const usernameLower = username.trim().toLowerCase();
   
@@ -63,10 +71,10 @@ export async function createUser(username: string, passwordHash: string): Promis
     // Use INSERT with ON CONFLICT to handle race conditions
     // Return the inserted row to verify it was actually created
     const result = await sql`
-      INSERT INTO users (username, username_lower, password_hash, created_at, last_login_at)
-      VALUES (${username.trim()}, ${usernameLower}, ${passwordHash}, ${now}, ${now})
+      INSERT INTO users (username, username_lower, password_hash, is_admin, created_at, last_login_at)
+      VALUES (${username.trim()}, ${usernameLower}, ${passwordHash}, ${isAdmin}, ${now}, ${now})
       ON CONFLICT (username_lower) DO NOTHING
-      RETURNING username, password_hash, created_at, last_login_at
+      RETURNING username, password_hash, is_admin, created_at, last_login_at
     `;
 
     // If no row was returned, the username already exists (race condition or duplicate)
@@ -78,6 +86,7 @@ export async function createUser(username: string, passwordHash: string): Promis
     return {
       username: row.username,
       passwordHash: row.password_hash,
+      isAdmin: row.is_admin || false,
       createdAt: parseInt(row.created_at),
       lastLoginAt: row.last_login_at ? parseInt(row.last_login_at) : now,
     };
@@ -100,7 +109,7 @@ export async function getUserByUsername(username: string): Promise<StoredUser | 
   
   try {
     const result = await sql`
-      SELECT username, password_hash, created_at, last_login_at
+      SELECT username, password_hash, is_admin, created_at, last_login_at
       FROM users
       WHERE username_lower = ${usernameLower}
     `;
@@ -113,6 +122,7 @@ export async function getUserByUsername(username: string): Promise<StoredUser | 
     return {
       username: row.username,
       passwordHash: row.password_hash,
+      isAdmin: row.is_admin || false,
       createdAt: parseInt(row.created_at),
       lastLoginAt: row.last_login_at ? parseInt(row.last_login_at) : undefined,
     };
@@ -228,6 +238,47 @@ export async function getGameStateMetadata(username: string): Promise<{ lastSave
     console.error('Error getting game state metadata:', error);
     return null;
   }
+}
+
+// Admin operations
+export async function getAllUsers(): Promise<Array<{ username: string; isAdmin: boolean; createdAt: number; lastLoginAt?: number }>> {
+  try {
+    const result = await sql`
+      SELECT username, is_admin, created_at, last_login_at
+      FROM users
+      ORDER BY created_at DESC
+    `;
+    
+    return result.rows.map(row => ({
+      username: row.username,
+      isAdmin: row.is_admin || false,
+      createdAt: parseInt(row.created_at),
+      lastLoginAt: row.last_login_at ? parseInt(row.last_login_at) : undefined,
+    }));
+  } catch (error) {
+    console.error('Error getting all users:', error);
+    throw error;
+  }
+}
+
+export async function updateUserAdminStatus(username: string, isAdmin: boolean): Promise<void> {
+  const usernameLower = username.trim().toLowerCase();
+  const now = Date.now();
+  
+  try {
+    await sql`
+      UPDATE users
+      SET is_admin = ${isAdmin}, updated_at = ${now}
+      WHERE username_lower = ${usernameLower}
+    `;
+  } catch (error) {
+    console.error('Error updating user admin status:', error);
+    throw error;
+  }
+}
+
+export async function updateUserGameState(username: string, gameState: any): Promise<void> {
+  await saveGameState(username, gameState);
 }
 
 // Password hashing

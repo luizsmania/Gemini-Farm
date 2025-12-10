@@ -36,6 +36,7 @@ export type ItemId = CropId | ProductId;
 export interface User {
   username: string;
   createdAt: number;
+  isAdmin?: boolean;
 }
 
 export interface CropData {

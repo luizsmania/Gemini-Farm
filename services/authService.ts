@@ -12,6 +12,12 @@ export const registerUser = async (username: string, password: string): Promise<
     if (result.success && result.user) {
       // Set session
       localStorage.setItem(SESSION_KEY, result.user.username);
+      // Store admin status
+      if (result.user.isAdmin) {
+        localStorage.setItem(`${SESSION_KEY}_isAdmin`, 'true');
+      } else {
+        localStorage.removeItem(`${SESSION_KEY}_isAdmin`);
+      }
       return result;
     }
     
@@ -98,6 +104,12 @@ export const loginUser = async (username: string, password: string): Promise<{ s
     if (result.success && result.user) {
       // Set session
       localStorage.setItem(SESSION_KEY, result.user.username);
+      // Store admin status
+      if (result.user.isAdmin) {
+        localStorage.setItem(`${SESSION_KEY}_isAdmin`, 'true');
+      } else {
+        localStorage.removeItem(`${SESSION_KEY}_isAdmin`);
+      }
       return result;
     }
     
@@ -152,14 +164,19 @@ export const checkSession = (): User | null => {
   const username = localStorage.getItem(SESSION_KEY);
   if (!username) return null;
 
+  // For database users, we need to check with the API
+  // For now, return basic user info - isAdmin will be set on login
   const usersStr = localStorage.getItem(USERS_KEY);
   const users: Record<string, StoredUser> = usersStr ? JSON.parse(usersStr) : {};
   
   const user = users[username.toLowerCase()];
   if (user) {
-    return { username: user.username, createdAt: user.createdAt };
+    return { username: user.username, createdAt: user.createdAt, isAdmin: false };
   }
-  return null;
+  
+  // If not in localStorage, it's a database user - check admin status
+  const isAdmin = localStorage.getItem(`${SESSION_KEY}_isAdmin`) === 'true';
+  return { username, createdAt: Date.now(), isAdmin };
 };
 
 export const getUserInfo = (username: string): { lastLoginAt?: number; createdAt: number } | null => {
