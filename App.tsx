@@ -222,12 +222,13 @@ const App: React.FC = () => {
           const serverState = update.gameState;
           
           // Ensure missions and achievements are arrays, not null/undefined
+          // Also filter out any null/undefined items from arrays to prevent null access errors
           const safeMissions = Array.isArray(serverState.missions) 
-            ? serverState.missions 
+            ? serverState.missions.filter(m => m !== null && m !== undefined)
             : (prev.missions || initializeMissions());
           
           const safeAchievements = Array.isArray(serverState.achievements)
-            ? serverState.achievements
+            ? serverState.achievements.filter(a => a !== null && a !== undefined)
             : (prev.achievements || initializeAchievements());
           
           const mergedState: GameState = {
@@ -713,6 +714,7 @@ const App: React.FC = () => {
         dailyChallenge = generateDailyChallenge();
       } else if (dailyChallenge) {
         dailyChallenge = checkDailyChallengeProgress(dailyChallenge, prev);
+        // checkDailyChallengeProgress can return null if challenge expired or completed
         if (dailyChallenge && dailyChallenge.completed && !prev.dailyChallenge?.completed) {
           // First time completing - show notification
           showNotification({
@@ -721,6 +723,10 @@ const App: React.FC = () => {
             message: `+${Math.round((dailyChallenge.rewardMultiplier - 1) * 100)}% bonus active!`,
             duration: 1000
           });
+        }
+        // If challenge was completed/expired, set to null
+        if (!dailyChallenge) {
+          dailyChallenge = null;
         }
       }
       
@@ -1732,13 +1738,13 @@ const App: React.FC = () => {
                   // Show badge for missions/achievements with completions
                   let badge = null;
                   if (tab.id === 'missions') {
-                    const completedCount = gameState.missions.filter(m => m.completed).length;
-                    const totalUnlocked = gameState.missions.filter(m => m.unlocked).length;
+                    const completedCount = (gameState.missions || []).filter(m => m && m.completed).length;
+                    const totalUnlocked = (gameState.missions || []).filter(m => m && m.unlocked).length;
                     if (completedCount > 0) {
                       badge = <span className="ml-1 text-[10px] sm:text-xs bg-emerald-500 text-white px-1 sm:px-1.5 py-0.5 rounded-full">{completedCount}/{totalUnlocked}</span>;
                     }
                   } else if (tab.id === 'achievements') {
-                    const unlockedCount = gameState.achievements.filter(a => a.unlocked).length;
+                    const unlockedCount = (gameState.achievements || []).filter(a => a && a.unlocked).length;
                     if (unlockedCount > 0) {
                       badge = <span className="ml-1 text-[10px] sm:text-xs bg-amber-500 text-white px-1 sm:px-1.5 py-0.5 rounded-full">{unlockedCount}</span>;
                     }
@@ -2228,7 +2234,7 @@ const App: React.FC = () => {
                             <Target size={24} /> Missions
                         </h2>
                         <div className="text-sm text-slate-400">
-                            Completed: {gameState.missions.filter(m => m.completed).length} / {gameState.missions.filter(m => m.unlocked).length}
+                            Completed: {(gameState.missions || []).filter(m => m && m.completed).length} / {(gameState.missions || []).filter(m => m && m.unlocked).length}
                         </div>
                     </div>
 
@@ -2250,16 +2256,18 @@ const App: React.FC = () => {
                                     {gameState.dailyChallenge.current} / {gameState.dailyChallenge.target}
                                 </span>
                             </div>
-                            {gameState.dailyChallenge?.completed && (
+                            {gameState.dailyChallenge?.completed && gameState.dailyChallenge && (
                                 <div className="text-xs text-emerald-400 font-bold">✓ Completed! +{Math.round((gameState.dailyChallenge.rewardMultiplier - 1) * 100)}% bonus active</div>
                             )}
                         </div>
                     )}
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {gameState.missions
-                            .filter(m => m.unlocked)
-                            .map(mission => (
+                        {(gameState.missions || [])
+                            .filter(m => m && m.unlocked)
+                            .map(mission => {
+                                if (!mission) return null;
+                                return (
                                 <div 
                                     key={mission.id}
                                     className={`bg-slate-800/50 rounded-xl p-4 border transition-all ${
@@ -2307,12 +2315,13 @@ const App: React.FC = () => {
                                                 <Star size={12} /> {mission.rewardXp} XP
                                             </span>
                                         </div>
-                                        {mission.completed && (
+                                        {mission && mission.completed && (
                                             <span className="text-emerald-400 text-xs font-bold">✓ Completed</span>
                                         )}
                                     </div>
                                 </div>
-                            ))}
+                                );
+                            })}
                     </div>
                 </div>
             )}
@@ -2373,7 +2382,7 @@ const App: React.FC = () => {
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {gameState.achievements.map(achievement => (
+                        {(gameState.achievements || []).filter(a => a).map(achievement => (
                             <div 
                                 key={achievement.id}
                                 className={`bg-slate-800/50 rounded-xl p-4 border transition-all ${
