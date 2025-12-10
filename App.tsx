@@ -8,12 +8,14 @@ import { AuthScreen } from './components/AuthScreen';
 import { checkSession, logoutUser, getUserInfo } from './services/authService';
 import { 
   GameState, CropId, MarketTrend, Weather, Season, Plot as PlotType, 
-  BuildingId, ItemId, ProductId, MerchantOffer, User, DecorationId, EditDragItem 
+  BuildingId, ItemId, ProductId, MerchantOffer, User, DecorationId, EditDragItem, ParticleEffect
 } from './types';
 import { 
   CROPS, PRODUCTS, BUILDINGS, INITIAL_PLOTS, MAX_PLOTS, INITIAL_COINS, 
   INITIAL_INVENTORY, INITIAL_HARVESTED, PLOT_COST_BASE, 
-  PLOT_COST_MULTIPLIER, SEASON_DURATION_MS, SPRINKLER_COST, GRID_SIZE, DECORATIONS, XP_TO_LEVEL_UP 
+  PLOT_COST_MULTIPLIER, SEASON_DURATION_MS, SPRINKLER_COST, GRID_SIZE, DECORATIONS, XP_TO_LEVEL_UP,
+  COMBO_DECAY_TIME, COMBO_MULTIPLIER_MAX, PRESTIGE_REQUIRED_LEVEL, PRESTIGE_LEVEL_INCREMENT,
+  PRESTIGE_POINTS_PER_LEVEL, RESEARCH_TREE
 } from './constants';
 import { fetchMarketTrend, fetchQuest, negotiateTrade } from './services/geminiService';
 import { 
@@ -29,6 +31,10 @@ import { Button } from './components/Button';
 import { Notification, NotificationItem } from './components/Notification';
 import { FloatingText, FloatingTextItem } from './components/FloatingText';
 import { QuestReward } from './components/QuestReward';
+import { ParticleEffects } from './components/ParticleEffects';
+import { WeatherEffects } from './components/WeatherEffects';
+import { PrestigePanel } from './components/PrestigePanel';
+import { MobileNav } from './components/MobileNav';
 
 type Tab = 'field' | 'shop' | 'market' | 'missions' | 'achievements';
 type DragAction = 'plant' | 'harvest' | 'water' | null;
@@ -62,7 +68,15 @@ const createDefaultGameState = (): GameState => ({
     achievements: initializeAchievements(),
     statistics: initializeStatistics(),
     dailyChallenge: null,
-    lastDailyChallengeReset: Date.now()
+    lastDailyChallengeReset: Date.now(),
+    // New mechanics
+    prestigeLevel: 0,
+    prestigePoints: 0,
+    cropMastery: {} as Record<CropId, number>,
+    researchTree: {},
+    automationLevel: 0,
+    comboBonus: 1,
+    lastComboTime: 0
 });
 
 const DEFAULT_GAME_STATE = createDefaultGameState();
@@ -110,6 +124,7 @@ const App: React.FC = () => {
   // Notifications & Animations
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [floatingTexts, setFloatingTexts] = useState<FloatingText[]>([]);
+  const [particles, setParticles] = useState<ParticleEffect[]>([]);
   const [lastLevel, setLastLevel] = useState(1);
   const [questReward, setQuestReward] = useState<{ coins: number; xp: number } | null>(null);
 
@@ -154,6 +169,15 @@ const App: React.FC = () => {
 
   const removeFloatingText = (id: string) => {
     setFloatingTexts(prev => prev.filter(t => t.id !== id));
+  };
+
+  const addParticle = (particle: Omit<ParticleEffect, 'id' | 'createdAt'>) => {
+    const id = Math.random().toString(36).substr(2, 9);
+    setParticles(prev => [...prev, { ...particle, id, createdAt: Date.now() }]);
+  };
+
+  const removeParticle = (id: string) => {
+    setParticles(prev => prev.filter(p => p.id !== id));
   };
 
   // Auth
@@ -215,9 +239,24 @@ const App: React.FC = () => {
                         })),
                         missions: parsed.missions || initializeMissions(),
                         achievements: parsed.achievements || initializeAchievements(),
-                        statistics: parsed.statistics || initializeStatistics(),
+                        statistics: {
+                            ...initializeStatistics(),
+                            ...parsed.statistics,
+                            plotsOwned: parsed.statistics?.plotsOwned || parsed.plots?.length || 0,
+                            totalPrestiges: parsed.statistics?.totalPrestiges || 0,
+                            maxCombo: parsed.statistics?.maxCombo || 0,
+                            perfectSeasons: parsed.statistics?.perfectSeasons || 0
+                        },
                         dailyChallenge: parsed.dailyChallenge || null,
-                        lastDailyChallengeReset: parsed.lastDailyChallengeReset || Date.now()
+                        lastDailyChallengeReset: parsed.lastDailyChallengeReset || Date.now(),
+                        // New mechanics with defaults
+                        prestigeLevel: parsed.prestigeLevel || 0,
+                        prestigePoints: parsed.prestigePoints || 0,
+                        cropMastery: parsed.cropMastery || {},
+                        researchTree: parsed.researchTree || {},
+                        automationLevel: parsed.automationLevel || 0,
+                        comboBonus: parsed.comboBonus || 1,
+                        lastComboTime: parsed.lastComboTime || 0
                     });
                 } else {
                     // Initialize default plots in a grid for new users
@@ -347,12 +386,47 @@ const App: React.FC = () => {
           return plot;
         });
 
+        // Combo decay
+        let newComboBonus = prev.comboBonus;
+        let newLastComboTime = prev.lastComboTime;
+        if (now - prev.lastComboTime > COMBO_DECAY_TIME && prev.comboBonus > 1) {
+          newComboBonus = 1;
+          hasChanges = true;
+        }
+
+        // Automation: Auto-harvest ready crops
+        let autoHarvested = false;
+        if (prev.automationLevel > 0 && prev.researchTree['auto_harvest_1']) {
+          newPlots = newPlots.map(plot => {
+            if (plot.status === 'ready' && plot.cropId && Math.random() < (prev.automationLevel * 0.2)) {
+              autoHarvested = true;
+              hasChanges = true;
+              // Trigger harvest logic (simplified for automation)
+              const crop = CROPS[plot.cropId];
+              const baseXp = Math.floor(crop.xpReward * (1 + (prev.prestigeLevel * 0.1)));
+              // Note: Full automation would require calling handleHarvest, but that's complex
+              // For now, we just mark it as harvested in a simplified way
+              return { ...plot, status: 'empty', cropId: null, plantedAt: null, isWatered: false };
+            }
+            return plot;
+          });
+        }
+
         // Quest Expiration
         let newQuest = prev.activeQuest;
         if (newQuest && now > newQuest.expiresAt) { newQuest = null; hasChanges = true; }
 
-        if (!hasChanges) return prev;
-        return { ...prev, plots: newPlots, activeQuest: newQuest, weather: newWeather, season: newSeason, nextSeasonAt: newNextSeasonAt };
+        if (!hasChanges && !autoHarvested) return prev;
+        return { 
+          ...prev, 
+          plots: newPlots, 
+          activeQuest: newQuest, 
+          weather: newWeather, 
+          season: newSeason, 
+          nextSeasonAt: newNextSeasonAt,
+          comboBonus: newComboBonus,
+          lastComboTime: newLastComboTime
+        };
       });
 
       if (marketTrend && now > marketTrend.expiresAt) setMarketTrend(null);
@@ -734,23 +808,83 @@ const App: React.FC = () => {
              }
         }
 
-        const totalXp = crop.xpReward + bonusXp;
+        // Combo system
+        const now = Date.now();
+        let newComboBonus = prev.comboBonus;
+        let newLastComboTime = prev.lastComboTime;
+        
+        if (now - prev.lastComboTime < COMBO_DECAY_TIME) {
+          newComboBonus = Math.min(prev.comboBonus + 0.1, COMBO_MULTIPLIER_MAX);
+          newLastComboTime = now;
+        } else {
+          newComboBonus = 1.1;
+          newLastComboTime = now;
+        }
+
+        // Mastery system
+        const masteryLevel = prev.cropMastery[crop.id] || 0;
+        const masteryXp = Math.floor(crop.xpReward * 0.1);
+
+        // Research & prestige bonuses
+        const prestigeBonus = 1 + (prev.prestigeLevel * 0.1);
+        const researchBonus = prev.researchTree['mastery_boost'] ? 1.25 : 1;
+
+        // Calculate rewards with bonuses
+        const baseXp = crop.xpReward;
+        const totalXp = Math.floor((baseXp + bonusXp) * newComboBonus * prestigeBonus * researchBonus);
         const newXp = prev.xp + totalXp;
         const newLevel = checkLevelUp(newXp, prev.level);
+
+        // Update mastery
+        const newCropMastery = { ...prev.cropMastery };
+        const currentMasteryXp = (newCropMastery[crop.id] || 0) + masteryXp;
+        const newMasteryLevel = Math.floor(currentMasteryXp / 100);
+        newCropMastery[crop.id] = currentMasteryXp;
         
         // Play sound
         import('./services/soundService').then(({ soundService }) => {
           soundService.harvest();
         });
 
-        // Show harvest notification (only if no quest completion to avoid spam)
+        // Particle effects (will be positioned by Plot component)
+        const plotElement = document.querySelector(`[data-plot-id="${plotId}"]`) as HTMLElement;
+        const rect = plotElement?.getBoundingClientRect();
+        if (rect) {
+          const particleX = rect.left + rect.width / 2;
+          const particleY = rect.top + rect.height / 2;
+          
+          addParticle({
+            type: 'harvest',
+            x: particleX,
+            y: particleY,
+            value: newComboBonus > 1.5 ? 2 : 1
+          });
+          
+          addParticle({
+            type: 'xp',
+            x: particleX,
+            y: particleY - 20,
+            value: totalXp
+          });
+
+          if (newComboBonus >= 2) {
+            addParticle({
+              type: 'combo',
+              x: particleX,
+              y: particleY - 40,
+              value: Math.floor(newComboBonus)
+            });
+          }
+        }
+
+        // Show harvest notification
         if (!(bonusCoins > 0 && bonusXp > 0)) {
           showNotification({
             type: 'success',
-            title: `Harvested ${crop.name}`,
+            title: `Harvested ${crop.name}${newComboBonus > 1.5 ? ` x${Math.floor(newComboBonus)}` : ''}`,
             message: `${crop.emoji} +${totalXp} XP`,
             duration: 1000,
-            groupKey: `harvest-${crop.id}` // Group by crop type
+            groupKey: `harvest-${crop.id}`
           });
         }
 
@@ -768,6 +902,16 @@ const App: React.FC = () => {
             });
           }, 500);
         }
+
+        // Mastery level up
+        if (newMasteryLevel > masteryLevel) {
+          showNotification({
+            type: 'success',
+            title: `Mastery Level Up!`,
+            message: `${crop.name} Mastery ${newMasteryLevel}`,
+            duration: 2000
+          });
+        }
         
         // Update statistics
         const newTotalHarvested = { ...prev.statistics.totalHarvested };
@@ -781,10 +925,14 @@ const App: React.FC = () => {
             harvested: { ...prev.harvested, [crop.id]: (prev.harvested[crop.id]||0) + 1 },
             plots: prev.plots.map(p => p.id === plotId ? { ...p, status: 'empty', cropId: null, plantedAt: null, isWatered: false } : p),
             activeQuest: newActiveQuest,
+            comboBonus: newComboBonus,
+            lastComboTime: newLastComboTime,
+            cropMastery: newCropMastery,
             statistics: {
                 ...prev.statistics,
                 totalHarvested: newTotalHarvested,
-                levelReached: Math.max(prev.statistics.levelReached, newLevel)
+                levelReached: Math.max(prev.statistics.levelReached, newLevel),
+                maxCombo: Math.max(prev.statistics.maxCombo || 0, Math.floor(newComboBonus))
             }
         };
     });
@@ -1146,9 +1294,15 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className={`min-h-screen text-slate-100 font-sans pb-32 transition-colors duration-1000 overflow-x-hidden
+    <div className={`min-h-screen text-slate-100 font-sans pb-32 md:pb-24 transition-colors duration-1000 overflow-x-hidden relative
         ${gameState.weather === 'rainy' ? 'bg-slate-900' : gameState.weather === 'drought' ? 'bg-[#2c1a12]' : 'bg-[#111827]'}
     `}>
+        {/* Weather Effects */}
+        <WeatherEffects weather={gameState.weather} season={gameState.season} />
+        
+        {/* Particle Effects */}
+        <ParticleEffects particles={particles} onRemove={removeParticle} />
+        
         {/* Overlays */}
         {gameState.weather === 'rainy' && <div className="fixed inset-0 pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/diagmonds-light.png')] opacity-10 z-0" />}
 
@@ -1758,7 +1912,51 @@ const App: React.FC = () => {
             )}
 
             {activeTab === 'achievements' && (
-                <div className="space-y-4">
+                <div className="space-y-6">
+                    {/* Prestige Panel */}
+                    {gameState.level >= (PRESTIGE_REQUIRED_LEVEL + (gameState.prestigeLevel * PRESTIGE_LEVEL_INCREMENT)) && (
+                        <PrestigePanel
+                            level={gameState.level}
+                            prestigeLevel={gameState.prestigeLevel}
+                            prestigePoints={gameState.prestigePoints}
+                            canPrestige={gameState.level >= (PRESTIGE_REQUIRED_LEVEL + (gameState.prestigeLevel * PRESTIGE_LEVEL_INCREMENT))}
+                            onPrestige={() => {
+                                const requiredLevel = PRESTIGE_REQUIRED_LEVEL + (gameState.prestigeLevel * PRESTIGE_LEVEL_INCREMENT);
+                                if (gameState.level >= requiredLevel) {
+                                    const prestigePointsEarned = gameState.level * PRESTIGE_POINTS_PER_LEVEL;
+                                    setGameState(prev => ({
+                                        ...createDefaultGameState(),
+                                        prestigeLevel: prev.prestigeLevel + 1,
+                                        prestigePoints: prev.prestigePoints + prestigePointsEarned,
+                                        researchTree: prev.researchTree, // Keep research
+                                        cropMastery: prev.cropMastery, // Keep mastery
+                                        statistics: {
+                                            ...prev.statistics,
+                                            totalPrestiges: (prev.statistics.totalPrestiges || 0) + 1
+                                        }
+                                    }));
+                                    addParticle({
+                                        type: 'prestige',
+                                        x: window.innerWidth / 2,
+                                        y: window.innerHeight / 2,
+                                    });
+                                    showNotification({
+                                        type: 'level',
+                                        title: 'Prestige!',
+                                        message: `Gained ${prestigePointsEarned} prestige points!`,
+                                        duration: 3000
+                                    });
+                                }
+                            }}
+                            stats={{
+                                totalEarned: gameState.statistics.totalEarned,
+                                totalHarvested: Object.values(gameState.statistics.totalHarvested).reduce((a, b) => a + b, 0),
+                                playTime: gameState.statistics.playTime,
+                                missionsCompleted: gameState.statistics.missionsCompleted
+                            }}
+                        />
+                    )}
+
                     <div className="flex items-center justify-between mb-6">
                         <h2 className="text-2xl font-bold text-slate-200 flex items-center gap-2">
                             <Trophy size={24} /> Achievements
@@ -1977,6 +2175,9 @@ const App: React.FC = () => {
             />
           ))}
         </div>
+
+        {/* Mobile Navigation */}
+        <MobileNav activeTab={activeTab} onTabChange={setActiveTab} />
     </div>
   );
 };

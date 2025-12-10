@@ -43,16 +43,12 @@ export const Shop: React.FC<ShopProps> = ({
                 onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    const currentCost = Math.floor(PLOT_COST_BASE * Math.pow(PLOT_COST_MULTIPLIER, plotCount - 6));
-                    if (!isMaxPlots && coins >= currentCost && plotCount < MAX_PLOTS) {
-                        onBuyPlot();
-                    }
+                    onBuyPlot();
                 }}
                 onTouchEnd={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    const currentCost = Math.floor(PLOT_COST_BASE * Math.pow(PLOT_COST_MULTIPLIER, plotCount - 6));
-                    if (!isMaxPlots && coins >= currentCost && plotCount < MAX_PLOTS) {
+                    if (!isMaxPlots && coins >= nextPlotCost) {
                         onBuyPlot();
                     }
                 }}

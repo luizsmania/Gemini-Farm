@@ -140,6 +140,14 @@ export interface GameState {
   statistics: Statistics;
   dailyChallenge: DailyChallenge | null;
   lastDailyChallengeReset: number;
+  // New mechanics
+  prestigeLevel: number;
+  prestigePoints: number;
+  cropMastery: Record<CropId, number>; // Mastery level per crop
+  researchTree: Record<string, boolean>; // Unlocked research
+  automationLevel: number; // 0-5, affects auto-harvesting
+  comboBonus: number; // Current combo multiplier
+  lastComboTime: number; // Timestamp for combo decay
 }
 
 export interface MarketTrend {
@@ -205,6 +213,10 @@ export interface Statistics {
   playTime: number; // in seconds
   levelReached: number;
   highestCoins: number;
+  plotsOwned: number;
+  totalPrestiges: number;
+  maxCombo: number;
+  perfectSeasons: number; // Seasons with 100% harvest rate
 }
 
 export interface DailyChallenge {
@@ -217,4 +229,22 @@ export interface DailyChallenge {
   rewardMultiplier: number; // Bonus XP/coins multiplier
   expiresAt: number;
   completed: boolean;
+}
+
+export interface ResearchNode {
+  id: string;
+  name: string;
+  description: string;
+  cost: number; // Prestige points
+  unlocks: string[];
+  category: 'efficiency' | 'automation' | 'mastery' | 'prestige';
+}
+
+export interface ParticleEffect {
+  id: string;
+  type: 'coin' | 'xp' | 'harvest' | 'combo' | 'prestige';
+  x: number;
+  y: number;
+  value?: number;
+  createdAt: number;
 }

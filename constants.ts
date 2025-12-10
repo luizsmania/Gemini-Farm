@@ -144,6 +144,21 @@ export const PLOT_COST_BASE = 150; // Increased from 100
 export const PLOT_COST_MULTIPLIER = 1.8; // Increased from 1.5
 export const SPRINKLER_COST = 750; // Increased from 500
 
+// New mechanics constants
+export const COMBO_DECAY_TIME = 5000; // ms before combo resets
+export const COMBO_MULTIPLIER_MAX = 5; // Max combo multiplier
+export const COMBO_THRESHOLD = 3; // Actions needed to start combo
+
+export const PRESTIGE_REQUIRED_LEVEL = 50; // Base level required
+export const PRESTIGE_LEVEL_INCREMENT = 10; // Extra levels per prestige
+export const PRESTIGE_POINTS_PER_LEVEL = 1; // Points earned per level at prestige
+
+export const MASTERY_XP_REQUIREMENT = 100; // XP needed per mastery level
+export const MASTERY_BONUS_PER_LEVEL = 0.05; // 5% bonus per mastery level
+
+export const AUTOMATION_UNLOCK_LEVEL = 25; // Level to unlock automation
+export const AUTOMATION_COST_BASE = 10000; // Base cost for automation upgrade
+
 export const INITIAL_COINS = 30; // Reduced from 50
 
 export const INITIAL_INVENTORY: Record<string, number> = {
@@ -173,6 +188,65 @@ export const INITIAL_HARVESTED: Record<string, number> = {
 export const XP_TO_LEVEL_UP = (level: number) => Math.floor(150 * Math.pow(1.8, level - 1)); // Much harder progression
 
 export const SEASON_DURATION_MS = 1000 * 60 * 5;
+
+// Research tree definitions
+export const RESEARCH_TREE: Array<{
+  id: string;
+  name: string;
+  description: string;
+  cost: number;
+  unlocks: string[];
+  category: 'efficiency' | 'automation' | 'mastery' | 'prestige';
+}> = [
+  {
+    id: 'fast_growth',
+    name: 'Fast Growth',
+    description: '+10% crop growth speed',
+    cost: 5,
+    unlocks: [],
+    category: 'efficiency'
+  },
+  {
+    id: 'better_yield',
+    name: 'Better Yield',
+    description: '+15% crop yield',
+    cost: 8,
+    unlocks: [],
+    category: 'efficiency'
+  },
+  {
+    id: 'auto_harvest_1',
+    name: 'Auto-Harvest I',
+    description: 'Automatically harvest ready crops',
+    cost: 15,
+    unlocks: [],
+    category: 'automation'
+  },
+  {
+    id: 'auto_plant',
+    name: 'Auto-Plant',
+    description: 'Auto-plant last used seed in empty plots',
+    cost: 20,
+    unlocks: ['auto_harvest_1'],
+    category: 'automation'
+  },
+  {
+    id: 'mastery_boost',
+    name: 'Mastery Boost',
+    description: '+25% mastery XP gain',
+    cost: 10,
+    unlocks: [],
+    category: 'mastery'
+  },
+  {
+    id: 'prestige_multiplier',
+    name: 'Prestige Power',
+    description: '+5% per prestige level (stacking)',
+    cost: 25,
+    unlocks: [],
+    category: 'prestige'
+  }
+];
 
 // Mission and Achievement Definitions
 

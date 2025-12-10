@@ -163,6 +163,58 @@
         .xs\:block { display: block; }
         .xs\:inline { display: inline; }
       }
+      /* Particle animations */
+      @keyframes bounce-gentle {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-5px); }
+      }
+      .animate-bounce-gentle {
+        animation: bounce-gentle 2s ease-in-out infinite;
+      }
+      @keyframes spin-slow {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+      .animate-spin-slow {
+        animation: spin-slow 3s linear infinite;
+      }
+      /* Combo indicator */
+      @keyframes combo-pulse {
+        0%, 100% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.1); opacity: 0.9; }
+      }
+      .animate-combo-pulse {
+        animation: combo-pulse 0.5s ease-in-out infinite;
+      }
+      /* Hide desktop nav on mobile */
+      @media (max-width: 768px) {
+        .desktop-nav { display: none !important; }
+      }
+      /* Show mobile nav only on mobile */
+      @media (min-width: 769px) {
+        .mobile-nav { display: none !important; }
+      }
+      /* Weather animations */
+      @keyframes rain {
+        from {
+          transform: translateY(-100px);
+          opacity: 1;
+        }
+        to {
+          transform: translateY(100vh);
+          opacity: 0.3;
+        }
+      }
+      @keyframes snow {
+        from {
+          transform: translateY(-100px) translateX(0);
+          opacity: 1;
+        }
+        to {
+          transform: translateY(100vh) translateX(50px);
+          opacity: 0;
+        }
+      }
     </style>
   <script type="importmap">
 {
