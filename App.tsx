@@ -109,6 +109,10 @@ const App: React.FC = () => {
   const [loadingTrend, setLoadingTrend] = useState(false);
   const [trendCooldown, setTrendCooldown] = useState(0);
   const [loadingQuest, setLoadingQuest] = useState(false);
+  
+  // Mobile: Show/hide Market Analyst and Quest Board
+  const [showMarketAnalyst, setShowMarketAnalyst] = useState(false);
+  const [showQuestBoard, setShowQuestBoard] = useState(false);
 
   // NPC
   const [merchantOffer, setMerchantOffer] = useState<MerchantOffer | null>(null);
@@ -145,8 +149,9 @@ const App: React.FC = () => {
           newNotifications[existingIndex] = {
             ...existing,
             count: newCount,
-            title: notification.title.replace(/\sx\d+$/, '') + ` x${newCount}`,
-            duration: notification.duration || existing.duration || 1000,
+            // Keep original title - the Notification component will show the count badge
+            title: notification.title.replace(/\sx\d+$/, ''),
+            duration: notification.duration || existing.duration || 3000, // Use longer duration for grouped notifications
             // Reset timer by updating id
             id: Math.random().toString(36).substr(2, 9)
           };
@@ -254,6 +259,7 @@ const App: React.FC = () => {
           title: 'Game Updated',
           message: 'Your game has been synced from another device',
           duration: 3000,
+          groupKey: 'game-sync', // Group all sync notifications together
         });
       }
     });
@@ -707,7 +713,7 @@ const App: React.FC = () => {
         dailyChallenge = generateDailyChallenge();
       } else if (dailyChallenge) {
         dailyChallenge = checkDailyChallengeProgress(dailyChallenge, prev);
-        if (dailyChallenge.completed && !prev.dailyChallenge?.completed) {
+        if (dailyChallenge && dailyChallenge.completed && !prev.dailyChallenge?.completed) {
           // First time completing - show notification
           showNotification({
             type: 'achievement',
@@ -864,6 +870,11 @@ const App: React.FC = () => {
 
   // 2. Mouse Up (End Drag / Drop)
   const handleGridMouseUp = (x: number, y: number, event?: React.MouseEvent | React.TouchEvent) => {
+      // Prevent default for touch events
+      if (event && 'touches' in event) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
       // Remove dragging class to restore scrolling
       if (event && 'touches' in event) {
         document.body.classList.remove('dragging');
@@ -1414,22 +1425,45 @@ const App: React.FC = () => {
               cells.push(
                   <div 
                     key={`${x}-${y}`} 
-                    onMouseDown={() => handleGridMouseDown(x, y)}
-                    onMouseUp={(e) => handleGridMouseUp(x, y, e)}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      handleGridMouseDown(x, y, e);
+                    }}
+                    onMouseUp={(e) => {
+                      e.preventDefault();
+                      handleGridMouseUp(x, y, e);
+                    }}
                     onMouseEnter={() => handleGridMouseEnter(x, y)}
                     onTouchStart={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
+                      // Wrap in try-catch to handle passive listener errors
+                      try {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      } catch (err) {
+                        // Ignore if preventDefault fails (passive listener)
+                      }
                       handleGridMouseDown(x, y, e);
                     }}
                     onTouchEnd={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
+                      try {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      } catch (err) {
+                        // Ignore if preventDefault fails (passive listener)
+                      }
                       handleGridMouseUp(x, y, e);
                     }}
                     onTouchMove={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
+                      // Only prevent default if we're actually dragging/interacting
+                      // Wrap in try-catch to handle passive listener errors
+                      if (isDragging || isEditMode) {
+                        try {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        } catch (err) {
+                          // Ignore if preventDefault fails (passive listener)
+                        }
+                      }
                       
                       // Handle edit mode drag
                       if (isEditMode && editDragItem) {
@@ -1686,7 +1720,8 @@ const App: React.FC = () => {
                     </div>
                 </div>
             </div>
-             <div className="max-w-5xl mx-auto px-2 sm:px-4 flex gap-1 sm:gap-6 overflow-x-auto no-scrollbar pb-1">
+             {/* Desktop tabs - hidden on mobile */}
+             <div className="hidden md:flex max-w-5xl mx-auto px-2 sm:px-4 gap-1 sm:gap-6 overflow-x-auto no-scrollbar pb-1">
                 {[ 
                   { id: 'field', label: 'Farm', icon: LayoutGrid }, 
                   { id: 'shop', label: 'Shop', icon: Store }, 
@@ -1738,7 +1773,7 @@ const App: React.FC = () => {
         </header>
 
         {/* --- Main Content --- */}
-        <main className="max-w-5xl mx-auto px-4 pt-36 pb-8 relative z-10">
+        <main className="max-w-5xl mx-auto px-4 pt-20 md:pt-36 pb-8 relative z-10">
             {merchantOffer && !isMerchantOpen && (
                 <div className="fixed right-4 bottom-24 z-50 animate-bounce">
                     <button 
@@ -1761,7 +1796,8 @@ const App: React.FC = () => {
 
             {activeTab === 'field' && (
                 <>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    {/* Desktop: Show Market Analyst and Quest Board side by side */}
+                    <div className="hidden lg:grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
                         <MarketAnalyst trend={marketTrend} loading={loadingTrend} onRefresh={async () => {
                             if (loadingTrend || trendCooldown > 0) return;
                             setLoadingTrend(true);
@@ -1777,14 +1813,86 @@ const App: React.FC = () => {
                             setLoadingQuest(false);
                         }} />
                     </div>
+                    
+                    {/* Mobile: Quick access buttons for Market Analyst and Quest Board */}
+                    <div className="lg:hidden flex gap-2 mb-3">
+                        <button
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setShowMarketAnalyst(!showMarketAnalyst);
+                                setShowQuestBoard(false);
+                            }}
+                            onTouchEnd={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setShowMarketAnalyst(!showMarketAnalyst);
+                                setShowQuestBoard(false);
+                            }}
+                            className={`flex-1 px-3 py-2 rounded-lg border-2 transition-all touch-manipulation ${
+                                showMarketAnalyst 
+                                    ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300' 
+                                    : 'bg-slate-800/50 border-white/10 text-slate-300'
+                            }`}
+                        >
+                            <TrendingUp size={16} className="inline mr-2" />
+                            <span className="text-xs font-bold">Forecast</span>
+                        </button>
+                        <button
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setShowQuestBoard(!showQuestBoard);
+                                setShowMarketAnalyst(false);
+                            }}
+                            onTouchEnd={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setShowQuestBoard(!showQuestBoard);
+                                setShowMarketAnalyst(false);
+                            }}
+                            className={`flex-1 px-3 py-2 rounded-lg border-2 transition-all touch-manipulation ${
+                                showQuestBoard 
+                                    ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300' 
+                                    : 'bg-slate-800/50 border-white/10 text-slate-300'
+                            }`}
+                        >
+                            <Target size={16} className="inline mr-2" />
+                            <span className="text-xs font-bold">Orders</span>
+                        </button>
+                    </div>
+                    
+                    {/* Mobile: Show Market Analyst or Quest Board when toggled */}
+                    {showMarketAnalyst && (
+                        <div className="lg:hidden mb-3">
+                            <MarketAnalyst trend={marketTrend} loading={loadingTrend} onRefresh={async () => {
+                                if (loadingTrend || trendCooldown > 0) return;
+                                setLoadingTrend(true);
+                                const t = await fetchMarketTrend(gameState.coins);
+                                if (t) { setMarketTrend(t); setTrendCooldown(60); }
+                                setLoadingTrend(false);
+                            }} cooldown={trendCooldown} />
+                        </div>
+                    )}
+                    {showQuestBoard && (
+                        <div className="lg:hidden mb-3">
+                            <QuestBoard quest={gameState.activeQuest} loading={loadingQuest} onRequestQuest={async () => {
+                                if (loadingQuest || gameState.activeQuest) return;
+                                setLoadingQuest(true);
+                                const q = await fetchQuest(gameState.level);
+                                if (q) setGameState(p => ({ ...p, activeQuest: q }));
+                                setLoadingQuest(false);
+                            }} />
+                        </div>
+                    )}
 
-                    <div className="flex justify-between items-center mb-4">
+                    <div className="flex justify-between items-center mb-2 sm:mb-4">
                         <div>
-                            <h2 className="text-xl font-bold text-slate-200 flex items-center gap-2">
+                            <h2 className="text-lg sm:text-xl font-bold text-slate-200 flex items-center gap-2">
                                 Farm Field
                                 {isEditMode && <span className="text-xs bg-yellow-500/20 text-yellow-300 px-2 py-0.5 rounded border border-yellow-500/30">Edit Mode</span>}
                             </h2>
-                            <p className="text-xs text-slate-400 mt-1">
+                            <p className="text-xs text-slate-400 mt-1 hidden sm:block">
                                 {gameState.plots.length} plots • {gameState.decorations.length} decorations
                             </p>
                         </div>
@@ -1826,13 +1934,13 @@ const App: React.FC = () => {
                         </div>
                     )}
 
-                    <div className={`bg-gradient-to-br from-[#1a2233] to-[#0f172a] border border-white/10 rounded-3xl p-4 sm:p-6 shadow-2xl backdrop-blur-sm overflow-x-auto transition-all ${isEditMode ? 'ring-2 ring-yellow-500/30' : ''}`}>
+                    <div className={`bg-gradient-to-br from-[#1a2233] to-[#0f172a] border border-white/10 rounded-3xl p-2 sm:p-6 shadow-2xl backdrop-blur-sm overflow-x-auto transition-all ${isEditMode ? 'ring-2 ring-yellow-500/30' : ''}`}>
                         {isEditMode && (
                             <div className="text-center text-xs text-yellow-200/70 mb-4 pb-3 border-b border-yellow-500/20">
                                 <p className="animate-pulse">💡 Drag plots to rearrange • Decorations can overlap plots</p>
                             </div>
                         )}
-                        <div className="min-w-[300px] grid grid-cols-6 gap-2 sm:gap-3 mx-auto select-none max-w-[700px]">
+                        <div className="min-w-[300px] grid grid-cols-6 gap-1.5 sm:gap-3 mx-auto select-none max-w-[700px] touch-none">
                             {renderGrid}
                         </div>
                     </div>
@@ -2142,7 +2250,7 @@ const App: React.FC = () => {
                                     {gameState.dailyChallenge.current} / {gameState.dailyChallenge.target}
                                 </span>
                             </div>
-                            {gameState.dailyChallenge.completed && (
+                            {gameState.dailyChallenge?.completed && (
                                 <div className="text-xs text-emerald-400 font-bold">✓ Completed! +{Math.round((gameState.dailyChallenge.rewardMultiplier - 1) * 100)}% bonus active</div>
                             )}
                         </div>
