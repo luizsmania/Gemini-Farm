@@ -1,2 +1,2 @@
-web: node websocket-server-example.js
+web: node server.js
 
