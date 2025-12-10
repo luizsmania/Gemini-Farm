@@ -1,0 +1,16 @@
+{
+  "name": "gemini-farm-websocket-server",
+  "version": "1.0.0",
+  "description": "WebSocket server for Gemini Farm real-time synchronization",
+  "main": "websocket-server-example.js",
+  "scripts": {
+    "start": "node websocket-server-example.js"
+  },
+  "dependencies": {
+    "socket.io": "^4.7.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
+

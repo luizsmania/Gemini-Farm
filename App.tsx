@@ -7,6 +7,7 @@ import { QuestBoard } from './components/QuestBoard';
 import { AuthScreen } from './components/AuthScreen';
 import { AdminPanel } from './components/AdminPanel';
 import { checkSession, logoutUser, getUserInfo } from './services/authService';
+import { websocketService } from './services/websocketService';
 import { 
   GameState, CropId, MarketTrend, Weather, Season, Plot as PlotType, 
   BuildingId, ItemId, ProductId, MerchantOffer, User, DecorationId, EditDragItem, ParticleEffect
@@ -189,6 +190,68 @@ const App: React.FC = () => {
     setAuthChecked(true);
   }, []);
 
+  // WebSocket: Connect and listen for real-time updates
+  useEffect(() => {
+    if (!currentUser) {
+      websocketService.disconnect();
+      return;
+    }
+
+    // Connect WebSocket
+    websocketService.connect(currentUser).catch((error) => {
+      console.warn('WebSocket connection failed, continuing without real-time sync:', error);
+      // Game continues to work without WebSocket, just without real-time sync
+    });
+
+    // Listen for game state updates from WebSocket
+    const unsubscribeGameState = websocketService.on('gameStateUpdate', (update: { username: string; gameState: GameState; version: number }) => {
+      if (update.username === currentUser.username) {
+        console.log('Received real-time game state update from another device');
+        
+        // Merge with current state (you might want to add conflict resolution here)
+        setGameState(prev => {
+          // For now, we'll use the server version if it's newer
+          // In production, you might want more sophisticated conflict resolution
+          return {
+            ...prev,
+            ...update.gameState,
+            // Preserve some local state that shouldn't be overwritten
+            // (like UI state, animations, etc.)
+          };
+        });
+
+        showNotification({
+          type: 'info',
+          title: 'Game Updated',
+          message: 'Your game has been synced from another device',
+          duration: 3000,
+        });
+      }
+    });
+
+    // Listen for notifications
+    const unsubscribeNotification = websocketService.on('notification', (data: { type: string; message: string; data?: any }) => {
+      showNotification({
+        type: data.type as any || 'info',
+        message: data.message,
+        duration: 3000,
+      });
+    });
+
+    // Listen for connection status
+    const unsubscribeStatus = websocketService.on('authenticated', (data: { success: boolean; message?: string }) => {
+      if (data.success) {
+        console.log('WebSocket authenticated successfully');
+      }
+    });
+
+    return () => {
+      unsubscribeGameState();
+      unsubscribeNotification();
+      unsubscribeStatus();
+    };
+  }, [currentUser]);
+
   // Load & Migrate Data
   useEffect(() => {
     if (currentUser) {
@@ -351,45 +414,86 @@ const App: React.FC = () => {
     }
   }, [currentUser]);
 
-  // Save Data
-  useEffect(() => {
-    if (currentUser) {
-        const saveData = async () => {
-            try {
-                // Save to database
-                const { saveGameState } = await import('./services/databaseService');
-                const saveResult = await saveGameState(currentUser.username, gameState);
-                
-                if (saveResult.success) {
-                    setLastSaveTime(Date.now());
-                    
-                    // Store metadata if we got it
-                    if (saveResult.metadata) {
-                        const metadataKey = `gemini_farm_metadata_${currentUser.username}`;
-                        localStorage.setItem(metadataKey, JSON.stringify(saveResult.metadata));
-                    }
-                    
-                    // Also save to localStorage as backup
-                    const saveKey = `gemini_farm_save_${currentUser.username}`;
-                    localStorage.setItem(saveKey, JSON.stringify(gameState));
-                }
-            } catch (e) {
-                console.error("Failed to save game state:", e);
-                // Fallback to localStorage
-                try {
-                    const saveKey = `gemini_farm_save_${currentUser.username}`;
-                    localStorage.setItem(saveKey, JSON.stringify(gameState));
-                    setLastSaveTime(Date.now());
-                } catch (localError) {
-                    console.error("Failed to save to localStorage:", localError);
-                }
-            }
-        };
+  // Save Data - Improved with immediate save for important changes
+  const saveGameStateToServer = React.useRef<{ timeoutId: NodeJS.Timeout | null }>({ timeoutId: null });
+  
+  const forceSave = React.useCallback(async () => {
+    if (!currentUser) return;
+    
+    try {
+      const { saveGameState } = await import('./services/databaseService');
+      const saveResult = await saveGameState(currentUser.username, gameState);
+      
+      if (saveResult.success) {
+        setLastSaveTime(Date.now());
         
-        // Debounce saves to avoid too many API calls
-        const timeoutId = setTimeout(saveData, 1000);
-        return () => clearTimeout(timeoutId);
+        // Store metadata if we got it
+        if (saveResult.metadata) {
+          const metadataKey = `gemini_farm_metadata_${currentUser.username}`;
+          localStorage.setItem(metadataKey, JSON.stringify(saveResult.metadata));
+          
+          // Send update via WebSocket for real-time sync
+          if (websocketService.isConnected()) {
+            websocketService.sendGameStateUpdate(gameState, saveResult.metadata.version);
+          }
+        }
+        
+        // Also save to localStorage as backup
+        const saveKey = `gemini_farm_save_${currentUser.username}`;
+        localStorage.setItem(saveKey, JSON.stringify(gameState));
+        console.log('Game state saved successfully');
+      }
+    } catch (e) {
+      console.error("Failed to save game state:", e);
+      // Fallback to localStorage
+      try {
+        const saveKey = `gemini_farm_save_${currentUser.username}`;
+        localStorage.setItem(saveKey, JSON.stringify(gameState));
+        setLastSaveTime(Date.now());
+        console.log('Saved to localStorage as backup');
+      } catch (localError) {
+        console.error("Failed to save to localStorage:", localError);
+      }
     }
+  }, [gameState, currentUser]);
+
+  // Auto-save with debounce (but shorter delay)
+  useEffect(() => {
+    if (currentUser && !isLoadingSave) {
+      // Clear previous timeout
+      if (saveGameStateToServer.current.timeoutId) {
+        clearTimeout(saveGameStateToServer.current.timeoutId);
+      }
+      
+      // Save after 500ms of no changes (reduced from 1000ms)
+      saveGameStateToServer.current.timeoutId = setTimeout(() => {
+        forceSave();
+      }, 500);
+      
+      return () => {
+        if (saveGameStateToServer.current.timeoutId) {
+          clearTimeout(saveGameStateToServer.current.timeoutId);
+        }
+      };
+    }
+  }, [gameState, currentUser, isLoadingSave, forceSave]);
+
+  // Save before page unload
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (currentUser) {
+        // Synchronous save to localStorage as last resort
+        try {
+          const saveKey = `gemini_farm_save_${currentUser.username}`;
+          localStorage.setItem(saveKey, JSON.stringify(gameState));
+        } catch (e) {
+          console.error('Failed to save on unload:', e);
+        }
+      }
+    };
+    
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [gameState, currentUser]);
 
   // Game Loop
@@ -642,7 +746,28 @@ const App: React.FC = () => {
       return () => clearInterval(interval);
   }, [merchantOffer, currentUser]);
 
-  const handleLogout = () => { logoutUser(); setCurrentUser(null); setGameState(createDefaultGameState()); };
+  const handleLogout = async () => {
+    // Save game state before logging out
+    if (currentUser) {
+      try {
+        const { saveGameState } = await import('./services/databaseService');
+        await saveGameState(currentUser.username, gameState);
+        console.log('Game state saved before logout');
+      } catch (error) {
+        console.error('Error saving before logout:', error);
+        // Still save to localStorage as backup
+        try {
+          const saveKey = `gemini_farm_save_${currentUser.username}`;
+          localStorage.setItem(saveKey, JSON.stringify(gameState));
+        } catch (e) {
+          console.error('Failed to save to localStorage:', e);
+        }
+      }
+    }
+    logoutUser();
+    setCurrentUser(null);
+    setGameState(createDefaultGameState());
+  };
 
   // --- Grid Interaction Logic ---
 
@@ -786,6 +911,8 @@ const App: React.FC = () => {
                     }
                 }));
                 setSelectedBuildingToPlace(null);
+                // Force immediate save after important purchase
+                setTimeout(() => forceSave(), 100);
             }
             return;
       }
@@ -806,6 +933,8 @@ const App: React.FC = () => {
                    plots: prev.plots.map(p => p.id === plotId ? { ...p, hasSprinkler: true, isWatered: true } : p)
                }));
                setPlacingSprinkler(false);
+               // Force immediate save after important purchase
+               setTimeout(() => forceSave(), 100);
            }
            return;
       }
@@ -1724,7 +1853,11 @@ const App: React.FC = () => {
                     inventory={gameState.inventory}
                     onBuySeed={(id, amt) => {
                          const cost = CROPS[id].buyPrice * amt;
-                         if (gameState.coins >= cost) setGameState(p => ({ ...p, coins: p.coins - cost, inventory: { ...p.inventory, [id]: (p.inventory[id]||0) + amt } }));
+                         if (gameState.coins >= cost) {
+                             setGameState(p => ({ ...p, coins: p.coins - cost, inventory: { ...p.inventory, [id]: (p.inventory[id]||0) + amt } }));
+                             // Force immediate save after purchase
+                             setTimeout(() => forceSave(), 100);
+                         }
                     }}
                     onBuyBuilding={(id) => { setSelectedBuildingToPlace(id); setActiveTab('field'); }}
                     onBuyDecoration={(id) => { setSelectedDecorationToPlace(id); setActiveTab('field'); }}
@@ -1754,6 +1887,9 @@ const App: React.FC = () => {
                                          plotsOwned: Math.max(p.statistics.plotsOwned || 0, p.plots.length + 1)
                                      }
                                  }));
+                                 
+                                 // Force immediate save after important purchase
+                                 setTimeout(() => forceSave(), 100);
                                  
                                  // Show notification
                                  showNotification({
