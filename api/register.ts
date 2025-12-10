@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createUser, usernameExists, hashPassword, initDatabase } from './database';
+import { createUser, usernameExists, hashPassword, initDatabase } from './database.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
