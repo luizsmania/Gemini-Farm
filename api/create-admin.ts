@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createUser, hashPassword, initDatabase, usernameExists } from './database.js';
+import { createUser, hashPassword, initDatabase, usernameExists, updateUserAdminStatus } from './database.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Allow both GET and POST for easier access
@@ -10,19 +10,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     await initDatabase();
 
-    const { username, password } = req.body;
-    const adminUsername = username || 'luizao';
-    const adminPassword = password || 'luizao';
+    const { username, password } = req.method === 'POST' ? req.body : req.query;
+    const adminUsername = (username || 'luizao') as string;
+    const adminPassword = (password || 'luizao') as string;
 
     // Check if admin already exists
     const exists = await usernameExists(adminUsername);
     if (exists) {
       // Update existing user to admin
-      const { updateUserAdminStatus } = await import('./database.js');
       await updateUserAdminStatus(adminUsername, true);
       return res.status(200).json({
         success: true,
         message: `User "${adminUsername}" is now an admin`,
+        username: adminUsername,
       });
     }
 
@@ -33,6 +33,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({
       success: true,
       message: `Admin user "${adminUsername}" created successfully`,
+      username: adminUsername,
+      password: adminPassword,
     });
   } catch (error: any) {
     console.error('Error creating admin:', error);

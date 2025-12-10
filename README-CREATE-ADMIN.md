@@ -20,14 +20,11 @@ Se você recebeu erro 404, o arquivo pode não ter sido deployado ainda. Siga es
    https://seu-app.vercel.app/api/create-admin
    ```
 
-## ✅ Solução 2: Usar Endpoint Alternativo
+## ✅ Solução 2: Usar GET ou POST
 
-Tente também:
-```
-https://seu-app.vercel.app/api/setup-admin
-```
-
-Este endpoint aceita tanto GET quanto POST.
+O endpoint `/api/create-admin` aceita tanto GET quanto POST:
+- **GET:** `https://seu-app.vercel.app/api/create-admin`
+- **POST:** `https://seu-app.vercel.app/api/create-admin` (com body JSON)
 
 ## ✅ Solução 3: Criar Admin Diretamente no Banco
 
@@ -67,7 +64,7 @@ WHERE username_lower = 'luizao';
 
 1. Acesse **Vercel Dashboard** → Seu Projeto
 2. Vá em **Functions**
-3. Procure por `create-admin` ou `setup-admin`
+3. Procure por `create-admin`
 4. Se não aparecer, o arquivo não foi deployado ainda
 5. Faça um novo deploy
 
@@ -75,7 +72,6 @@ WHERE username_lower = 'luizao';
 
 No seu repositório, verifique se existe:
 - `api/create-admin.ts` ✅
-- `api/setup-admin.ts` ✅
 
 Se não existirem, você precisa fazer commit e push.
 
