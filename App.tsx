@@ -211,16 +211,42 @@ const App: React.FC = () => {
       if (update.username === currentUser.username) {
         console.log('Received real-time game state update from another device');
         
-        // Merge with current state (you might want to add conflict resolution here)
+        // Merge with current state safely - ensure all required properties exist
         setGameState(prev => {
-          // For now, we'll use the server version if it's newer
-          // In production, you might want more sophisticated conflict resolution
-          return {
-            ...prev,
-            ...update.gameState,
-            // Preserve some local state that shouldn't be overwritten
-            // (like UI state, animations, etc.)
+          // Create a safe merge that preserves nested objects and arrays
+          const serverState = update.gameState;
+          
+          // Ensure missions and achievements are arrays, not null/undefined
+          const safeMissions = Array.isArray(serverState.missions) 
+            ? serverState.missions 
+            : (prev.missions || initializeMissions());
+          
+          const safeAchievements = Array.isArray(serverState.achievements)
+            ? serverState.achievements
+            : (prev.achievements || initializeAchievements());
+          
+          const mergedState: GameState = {
+            ...createDefaultGameState(), // Start with defaults to ensure all properties exist
+            ...prev, // Preserve current state
+            ...serverState, // Apply server update
+            // Ensure nested objects are properly merged
+            inventory: { ...prev.inventory, ...(serverState.inventory || {}) },
+            harvested: { ...prev.harvested, ...(serverState.harvested || {}) },
+            plots: Array.isArray(serverState.plots) ? serverState.plots : prev.plots,
+            decorations: Array.isArray(serverState.decorations) ? serverState.decorations : prev.decorations,
+            missions: safeMissions,
+            achievements: safeAchievements,
+            statistics: {
+              ...initializeStatistics(),
+              ...prev.statistics,
+              ...(serverState.statistics || {}),
+            },
+            // Preserve UI-related state that shouldn't be synced
+            activeQuest: serverState.activeQuest !== undefined ? serverState.activeQuest : prev.activeQuest,
+            dailyChallenge: serverState.dailyChallenge !== undefined ? serverState.dailyChallenge : prev.dailyChallenge,
           };
+          
+          return mergedState;
         });
 
         showNotification({
