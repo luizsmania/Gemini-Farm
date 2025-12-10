@@ -1,6 +1,7 @@
 {
   "name": "gemini-farm-websocket",
   "version": "1.0.0",
+  "type": "module",
   "main": "websocket-server-example.js",
   "scripts": {
     "start": "node websocket-server-example.js"

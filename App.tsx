@@ -197,10 +197,13 @@ const App: React.FC = () => {
       return;
     }
 
-    // Connect WebSocket
+    // Connect WebSocket (silently fails if server not available)
     websocketService.connect(currentUser).catch((error) => {
-      console.warn('WebSocket connection failed, continuing without real-time sync:', error);
-      // Game continues to work without WebSocket, just without real-time sync
+      // Silently handle - game works fine without WebSocket
+      // Only log in development
+      if (import.meta.env.DEV) {
+        console.info('WebSocket not available, game continues without real-time sync');
+      }
     });
 
     // Listen for game state updates from WebSocket

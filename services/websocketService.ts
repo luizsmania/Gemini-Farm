@@ -16,30 +16,26 @@ export interface GameStateUpdate {
 class WebSocketService {
   private socket: Socket | null = null;
   private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
+  private maxReconnectAttempts = 3; // Reduced to fail faster
   private reconnectDelay = 1000;
   private isConnecting = false;
   private listeners: Map<string, Set<(data: any) => void>> = new Map();
   private currentUser: User | null = null;
 
   // Get WebSocket server URL from environment or use default
-  private getServerUrl(): string {
+  private getServerUrl(): string | null {
     // For production, use environment variable or default to your WebSocket server
     // For development, you can use a local WebSocket server
     const wsUrl = import.meta.env.VITE_WS_URL || import.meta.env.VITE_WS_SERVER_URL;
     
-    if (wsUrl) {
-      return wsUrl;
+    // Only connect if URL is explicitly configured
+    if (wsUrl && wsUrl.trim() !== '' && !wsUrl.includes('your-app') && !wsUrl.includes('localhost')) {
+      return wsUrl.trim();
     }
 
-    // Default: try to connect to same origin with /socket.io path
-    // This works if you have a WebSocket server running
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    
-    // For Vercel, you'd typically use an external WebSocket service
-    // Or run a separate WebSocket server
-    return `${protocol}//${host}`;
+    // Don't try to connect if no URL is configured
+    // Game works fine without WebSocket (just without real-time sync)
+    return null;
   }
 
   /**
@@ -60,7 +56,8 @@ class WebSocketService {
             if (this.socket?.connected) {
               resolve();
             } else {
-              reject(new Error('Connection failed'));
+              // Don't reject, just resolve silently - game works without WebSocket
+              resolve();
             }
           }
         }, 100);
@@ -72,14 +69,23 @@ class WebSocketService {
 
       try {
         const serverUrl = this.getServerUrl();
+        
+        // If no WebSocket URL is configured, skip connection silently
+        if (!serverUrl) {
+          console.log('WebSocket server not configured, continuing without real-time sync');
+          this.isConnecting = false;
+          resolve();
+          return;
+        }
+
         console.log('Connecting to WebSocket server:', serverUrl);
 
         this.socket = io(serverUrl, {
           transports: ['websocket', 'polling'], // Fallback to polling if WebSocket fails
           reconnection: true,
           reconnectionDelay: this.reconnectDelay,
-          reconnectionAttempts: this.maxReconnectAttempts,
-          timeout: 20000,
+          reconnectionAttempts: 3, // Reduced attempts to fail faster
+          timeout: 10000, // Reduced timeout
           auth: {
             username: user.username,
           },
@@ -109,17 +115,23 @@ class WebSocketService {
         });
 
         this.socket.on('connect_error', (error) => {
-          console.error('WebSocket connection error:', error);
           this.isConnecting = false;
           this.reconnectAttempts++;
           
-          if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-            console.warn('Max reconnection attempts reached. WebSocket will not reconnect automatically.');
-            reject(error);
-          } else {
-            // Will auto-reconnect
-            resolve(); // Resolve anyway to not block the app
+          // Don't block the app - game works fine without WebSocket
+          // Only log in development, fail silently in production
+          if (import.meta.env.DEV) {
+            console.warn('WebSocket connection error (game will continue without real-time sync):', error.message);
           }
+          
+          if (this.reconnectAttempts >= 3) {
+            if (import.meta.env.DEV) {
+              console.info('WebSocket server unavailable. Game will continue without real-time synchronization.');
+            }
+            this.socket?.disconnect();
+            this.socket = null;
+          }
+          resolve(); // Always resolve to not block the app
         });
 
         this.socket.on('reconnect', (attemptNumber) => {

@@ -16,8 +16,8 @@
  * 4. Set VITE_WS_URL in your Vercel project to point to this server
  */
 
-const { Server } = require('socket.io');
-const http = require('http');
+import { Server } from 'socket.io';
+import http from 'http';
 // Note: You'll need to adapt the database functions for Node.js
 // or use the same database connection logic from your Vercel functions
 
