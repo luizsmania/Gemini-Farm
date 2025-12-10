@@ -60,19 +60,36 @@ export async function createUser(username: string, passwordHash: string): Promis
   const usernameLower = username.trim().toLowerCase();
   
   try {
-    await sql`
+    // Use INSERT with ON CONFLICT to handle race conditions
+    // Return the inserted row to verify it was actually created
+    const result = await sql`
       INSERT INTO users (username, username_lower, password_hash, created_at, last_login_at)
       VALUES (${username.trim()}, ${usernameLower}, ${passwordHash}, ${now}, ${now})
       ON CONFLICT (username_lower) DO NOTHING
+      RETURNING username, password_hash, created_at, last_login_at
     `;
 
+    // If no row was returned, the username already exists (race condition or duplicate)
+    if (result.rows.length === 0) {
+      throw new Error('USERNAME_EXISTS');
+    }
+
+    const row = result.rows[0];
     return {
-      username: username.trim(),
-      passwordHash,
-      createdAt: now,
-      lastLoginAt: now,
+      username: row.username,
+      passwordHash: row.password_hash,
+      createdAt: parseInt(row.created_at),
+      lastLoginAt: row.last_login_at ? parseInt(row.last_login_at) : now,
     };
-  } catch (error) {
+  } catch (error: any) {
+    // Re-throw our custom error
+    if (error.message === 'USERNAME_EXISTS') {
+      throw error;
+    }
+    // Check for PostgreSQL unique constraint violation
+    if (error?.code === '23505') {
+      throw new Error('USERNAME_EXISTS');
+    }
     console.error('Error creating user:', error);
     throw error;
   }

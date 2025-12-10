@@ -4,7 +4,7 @@ import { registerUserAPI, loginUserAPI } from "./databaseService";
 
 const SESSION_KEY = 'gemini_farm_session';
 
-// Use database API for registration, fallback to localStorage
+// Use database API for registration - NO localStorage fallback to ensure uniqueness
 export const registerUser = async (username: string, password: string): Promise<{ success: boolean; message: string; user?: User }> => {
   try {
     const result = await registerUserAPI(username, password);
@@ -15,15 +15,16 @@ export const registerUser = async (username: string, password: string): Promise<
       return result;
     }
     
-    // If API fails, fallback to localStorage
-    if (!result.success && result.message.includes('Failed to connect')) {
-      return registerUserLocal(username, password);
-    }
-    
+    // Do NOT fallback to localStorage - all accounts must be in database for uniqueness
+    // If API fails, return error
     return result;
   } catch (error) {
-    // Fallback to localStorage on error
-    return registerUserLocal(username, password);
+    // Do NOT fallback to localStorage - all accounts must be in database
+    console.error('Registration error:', error);
+    return { 
+      success: false, 
+      message: 'Failed to create account. Please check your connection and try again.' 
+    };
   }
 };
 

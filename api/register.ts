@@ -30,15 +30,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ success: false, error: 'Password must be at least 6 characters long.' });
     }
 
-    // Check if username exists
+    // Check if username exists (first check to provide immediate feedback)
     const exists = await usernameExists(username);
     if (exists) {
       return res.status(400).json({ success: false, error: 'Username already exists. Please choose another.' });
     }
 
-    // Create user
+    // Create user (this will also check for race conditions)
     const passwordHash = hashPassword(password);
-    const newUser = await createUser(username, passwordHash);
+    let newUser: any;
+    try {
+      newUser = await createUser(username, passwordHash);
+    } catch (createError: any) {
+      // Handle username already exists (race condition - someone registered between check and create)
+      if (createError?.message === 'USERNAME_EXISTS' || createError?.code === '23505') {
+        return res.status(400).json({ success: false, error: 'Username already exists. Please choose another.' });
+      }
+      throw createError; // Re-throw other errors
+    }
+
+    // Verify the user was actually created (double-check)
+    const verifyUser = await usernameExists(username);
+    if (!verifyUser) {
+      return res.status(500).json({ success: false, error: 'Failed to create account. Please try again.' });
+    }
 
     return res.status(200).json({
       success: true,
@@ -51,8 +66,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   } catch (error: any) {
     console.error('Error registering user:', error);
-    // Handle unique constraint violation
-    if (error?.code === '23505' || error?.message?.includes('unique')) {
+    // Handle unique constraint violation (final safety net)
+    if (error?.code === '23505' || error?.message === 'USERNAME_EXISTS' || error?.message?.includes('unique')) {
       return res.status(400).json({ success: false, error: 'Username already exists. Please choose another.' });
     }
     return res.status(500).json({ success: false, error: 'Internal server error' });
