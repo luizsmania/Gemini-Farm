@@ -659,11 +659,18 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [marketTrend, currentUser]);
 
+  // Track which missions/challenges have already shown notifications
+  const notifiedMissionsRef = useRef<Set<string>>(new Set());
+  const notifiedAchievementsRef = useRef<Set<string>>(new Set());
+  const dailyChallengeNotifiedRef = useRef<string | null>(null);
+  const lastGameStateRef = useRef<GameState | null>(null);
+
   // Mission & Achievement Progress Checking
   useEffect(() => {
     if (!currentUser) return;
     
     const now = Date.now();
+    const prevState = lastGameStateRef.current || gameState;
     
     setGameState(prev => {
       const { updatedMissions, completedMissions } = checkMissionProgress(prev.missions, prev);
@@ -674,34 +681,46 @@ const App: React.FC = () => {
       let newLevel = prev.level;
       let newStatistics = { ...prev.statistics };
       
-      // Reward completed missions
+      // Reward completed missions (only show notification if not already notified)
       completedMissions.forEach(mission => {
         newCoins += mission.rewardCoins;
         newXp += mission.rewardXp;
         newStatistics.missionsCompleted += 1;
         
-        // Show mission completion notification
-        showNotification({
-          type: 'mission',
-          title: `Mission Complete: ${mission.title}`,
-          message: `+${mission.rewardCoins} coins, +${mission.rewardXp} XP`,
-          duration: 1000
-        });
+        // Only show notification if we haven't shown it for this mission before
+        if (!notifiedMissionsRef.current.has(mission.id)) {
+          notifiedMissionsRef.current.add(mission.id);
+          // Use setTimeout to avoid calling showNotification during state update
+          setTimeout(() => {
+            showNotification({
+              type: 'mission',
+              title: `Mission Complete: ${mission.title}`,
+              message: `+${mission.rewardCoins} coins, +${mission.rewardXp} XP`,
+              duration: 2000
+            });
+          }, 0);
+        }
       });
       
-      // Reward completed achievements
+      // Reward completed achievements (only show notification if not already notified)
       completedAchievements.forEach(achievement => {
         newCoins += achievement.rewardCoins;
         newXp += achievement.rewardXp;
         
-        // Show achievement unlock notification
-        showNotification({
-          type: 'achievement',
-          title: `Achievement Unlocked!`,
-          message: `${achievement.icon} ${achievement.title}`,
-          icon: <span className="text-2xl">{achievement.icon}</span>,
-          duration: 1000
-        });
+        // Only show notification if we haven't shown it for this achievement before
+        if (!notifiedAchievementsRef.current.has(achievement.id)) {
+          notifiedAchievementsRef.current.add(achievement.id);
+          // Use setTimeout to avoid calling showNotification during state update
+          setTimeout(() => {
+            showNotification({
+              type: 'achievement',
+              title: `Achievement Unlocked!`,
+              message: `${achievement.icon} ${achievement.title}`,
+              icon: <span className="text-2xl">{achievement.icon}</span>,
+              duration: 2000
+            });
+          }, 0);
+        }
       });
       
       if (newXp !== prev.xp) {
@@ -710,20 +729,22 @@ const App: React.FC = () => {
         // Check for level up
         if (newLevel > prev.level) {
           const levelDiff = newLevel - prev.level;
-          showNotification({
-            type: 'level',
-            title: `Level Up!`,
-            message: `Reached Level ${newLevel}!`,
-            duration: 4000
-          });
-          
-          // Show floating level text in center
-          showFloatingText({
-            type: 'level',
-            value: newLevel,
-            x: window.innerWidth / 2,
-            y: window.innerHeight / 2
-          });
+          setTimeout(() => {
+            showNotification({
+              type: 'level',
+              title: `Level Up!`,
+              message: `Reached Level ${newLevel}!`,
+              duration: 4000
+            });
+            
+            // Show floating level text in center
+            showFloatingText({
+              type: 'level',
+              value: newLevel,
+              x: window.innerWidth / 2,
+              y: window.innerHeight / 2
+            });
+          }, 0);
         }
       }
       
@@ -733,19 +754,28 @@ const App: React.FC = () => {
       
       if (shouldResetDaily) {
         dailyChallenge = generateDailyChallenge();
+        // Reset notification tracking when challenge resets
+        dailyChallengeNotifiedRef.current = null;
       } else if (dailyChallenge) {
         const wasCompleted = dailyChallenge.completed;
+        const challengeId = dailyChallenge.id;
         dailyChallenge = checkDailyChallengeProgress(dailyChallenge, prev);
         // checkDailyChallengeProgress can return null if challenge expired or completed
         if (dailyChallenge && dailyChallenge.completed && !wasCompleted) {
-          // First time completing - show notification (only once)
-          showNotification({
-            type: 'achievement',
-            title: 'Daily Challenge Complete!',
-            message: `+${Math.round((dailyChallenge.rewardMultiplier - 1) * 100)}% bonus active!`,
-            duration: 3000,
-            groupKey: 'daily-challenge-complete' // Group to prevent duplicates
-          });
+          // Only show notification if we haven't shown it for this challenge ID
+          if (dailyChallengeNotifiedRef.current !== challengeId) {
+            dailyChallengeNotifiedRef.current = challengeId;
+            // Use setTimeout to avoid calling showNotification during state update
+            setTimeout(() => {
+              showNotification({
+                type: 'achievement',
+                title: 'Daily Challenge Complete!',
+                message: `+${Math.round((dailyChallenge.rewardMultiplier - 1) * 100)}% bonus active!`,
+                duration: 3000,
+                groupKey: 'daily-challenge-complete' // Group to prevent duplicates
+              });
+            }, 0);
+          }
         }
         // If challenge was completed/expired, set to null
         if (!dailyChallenge) {
@@ -753,7 +783,7 @@ const App: React.FC = () => {
         }
       }
       
-      return {
+      const newState = {
         ...prev,
         coins: newCoins,
         xp: newXp,
@@ -767,8 +797,23 @@ const App: React.FC = () => {
         dailyChallenge,
         lastDailyChallengeReset: shouldResetDaily ? now : prev.lastDailyChallengeReset
       };
+      
+      // Update ref to track last state
+      lastGameStateRef.current = newState;
+      
+      return newState;
     });
   }, [gameState.statistics, gameState.level, currentUser]);
+
+  // Reset notification tracking when user changes
+  useEffect(() => {
+    if (!currentUser) {
+      notifiedMissionsRef.current.clear();
+      notifiedAchievementsRef.current.clear();
+      dailyChallengeNotifiedRef.current = null;
+      lastGameStateRef.current = null;
+    }
+  }, [currentUser]);
 
   // Track quest completion
   useEffect(() => {
