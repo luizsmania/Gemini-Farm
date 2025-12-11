@@ -2576,7 +2576,7 @@ const App: React.FC = () => {
         )}
 
         {/* Notification Container */}
-        <div className="fixed top-20 right-4 z-[100] flex flex-col gap-2 pointer-events-none">
+        <div className="fixed top-16 sm:top-20 right-2 sm:right-4 z-[100] flex flex-col gap-2 pointer-events-none max-w-[calc(100vw-1rem)] sm:max-w-none">
           {notifications.slice(0, 5).map(notification => (
             <div key={notification.id} className="pointer-events-auto">
               <NotificationItem

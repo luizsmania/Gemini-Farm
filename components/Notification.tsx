@@ -70,7 +70,8 @@ export const NotificationItem: React.FC<NotificationProps> = ({ notification, on
         ${getStyles()}
         border-2 rounded-lg sm:rounded-xl p-3 sm:p-4 shadow-2xl backdrop-blur-md
         animate-slide-in-right
-        min-w-[280px] sm:min-w-[300px] max-w-[calc(100vw-2rem)] sm:max-w-[400px]
+        w-full sm:w-auto
+        min-w-[260px] sm:min-w-[300px] max-w-[calc(100vw-1rem)] sm:max-w-[400px]
         flex items-start gap-2 sm:gap-3
         relative overflow-hidden
       `}
