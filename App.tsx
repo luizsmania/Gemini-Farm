@@ -193,7 +193,11 @@ const App: React.FC = () => {
   // Auth
   useEffect(() => {
     const sessionUser = checkSession();
-    if (sessionUser) setCurrentUser(sessionUser);
+    if (sessionUser) {
+      // Ensure isAdmin is properly restored from localStorage
+      const isAdmin = localStorage.getItem('gemini_farm_session_isAdmin') === 'true';
+      setCurrentUser({ ...sessionUser, isAdmin });
+    }
     setAuthChecked(true);
   }, []);
 
@@ -214,9 +218,21 @@ const App: React.FC = () => {
     });
 
     // Listen for game state updates from WebSocket
-    const unsubscribeGameState = websocketService.on('gameStateUpdate', (update: { username: string; gameState: GameState; version: number }) => {
+    const unsubscribeGameState = websocketService.on('gameStateUpdate', (update: { username: string; gameState: GameState; version: number; fromDevice?: string }) => {
       if (update.username === currentUser.username) {
-        console.log('Received real-time game state update from another device');
+        // Only show sync notification if this is actually from another device
+        // Check if we have a device ID stored and compare
+        const currentDeviceId = localStorage.getItem('gemini_farm_device_id') || '';
+        const updateDeviceId = update.fromDevice || '';
+        const isFromAnotherDevice = updateDeviceId && updateDeviceId !== currentDeviceId;
+        
+        // If no device ID is set, set one now
+        if (!currentDeviceId) {
+          const newDeviceId = `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          localStorage.setItem('gemini_farm_device_id', newDeviceId);
+        }
+        
+        console.log('Received real-time game state update', isFromAnotherDevice ? 'from another device' : 'from same device');
         
         // Merge with current state safely - ensure all required properties exist
         setGameState(prev => {
@@ -257,13 +273,16 @@ const App: React.FC = () => {
           return mergedState;
         });
 
-        showNotification({
-          type: 'info',
-          title: 'Game Updated',
-          message: 'Your game has been synced from another device',
-          duration: 3000,
-          groupKey: 'game-sync', // Group all sync notifications together
-        });
+        // Only show notification if actually from another device
+        if (isFromAnotherDevice) {
+          showNotification({
+            type: 'info',
+            title: 'Game Updated',
+            message: 'Your game has been synced from another device',
+            duration: 3000,
+            groupKey: 'game-sync', // Group all sync notifications together
+          });
+        }
       }
     });
 
@@ -715,15 +734,17 @@ const App: React.FC = () => {
       if (shouldResetDaily) {
         dailyChallenge = generateDailyChallenge();
       } else if (dailyChallenge) {
+        const wasCompleted = dailyChallenge.completed;
         dailyChallenge = checkDailyChallengeProgress(dailyChallenge, prev);
         // checkDailyChallengeProgress can return null if challenge expired or completed
-        if (dailyChallenge && dailyChallenge.completed && !prev.dailyChallenge?.completed) {
-          // First time completing - show notification
+        if (dailyChallenge && dailyChallenge.completed && !wasCompleted) {
+          // First time completing - show notification (only once)
           showNotification({
             type: 'achievement',
             title: 'Daily Challenge Complete!',
             message: `+${Math.round((dailyChallenge.rewardMultiplier - 1) * 100)}% bonus active!`,
-            duration: 1000
+            duration: 3000,
+            groupKey: 'daily-challenge-complete' // Group to prevent duplicates
           });
         }
         // If challenge was completed/expired, set to null
@@ -1763,7 +1784,7 @@ const App: React.FC = () => {
         {/* --- Main Content --- */}
         <main className="max-w-5xl mx-auto px-2 sm:px-4 pt-16 sm:pt-20 md:pt-36 pb-20 sm:pb-8 relative z-10">
             {merchantOffer && !isMerchantOpen && (
-                <div className="fixed right-2 sm:right-4 bottom-20 sm:bottom-24 z-50 animate-bounce">
+                <div className="fixed right-2 sm:right-4 bottom-24 md:bottom-6 z-50 animate-bounce">
                     <button 
                         onClick={(e) => {
                             e.preventDefault();
@@ -1776,7 +1797,8 @@ const App: React.FC = () => {
                         }}
                         className="bg-amber-600 hover:bg-amber-500 text-white p-3 sm:p-4 rounded-full shadow-lg border-2 border-white/20 touch-manipulation"
                     >
-                        <MessageCircle size={20} className="sm:w-6 sm:h-6" /><div className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2 bg-red-500 text-[10px] sm:text-xs font-bold w-4 h-4 sm:w-5 sm:h-5 rounded-full flex items-center justify-center">!</div>
+                        <MessageCircle size={20} className="sm:w-6 sm:h-6" />
+                        <div className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2 bg-red-500 text-[10px] sm:text-xs font-bold w-4 h-4 sm:w-5 sm:h-5 rounded-full flex items-center justify-center">!</div>
                     </button>
                 </div>
             )}

@@ -113,7 +113,16 @@ export const Shop: React.FC<ShopProps> = ({
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-          {activeCategory === 'seeds' && Object.values(CROPS).map((crop) => {
+          {activeCategory === 'seeds' && Object.values(CROPS)
+                .sort((a, b) => {
+                  // Sort: owned seeds first, then by unlock level
+                  const aOwned = (inventory[a.id] || 0) > 0;
+                  const bOwned = (inventory[b.id] || 0) > 0;
+                  if (aOwned && !bOwned) return -1;
+                  if (!aOwned && bOwned) return 1;
+                  return a.unlockLevel - b.unlockLevel;
+                })
+                .map((crop) => {
                 const isLocked = level < crop.unlockLevel;
                 return (
                     <div key={crop.id} className={`bg-[#1e293b]/60 backdrop-blur-md rounded-xl sm:rounded-2xl p-3 sm:p-4 md:p-5 border transition-all ${isLocked ? 'border-slate-700 opacity-70' : 'border-white/5 hover:border-emerald-500/30'}`}>

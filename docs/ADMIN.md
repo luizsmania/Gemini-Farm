@@ -55,3 +55,4 @@ UPDATE users SET "isAdmin" = true WHERE username = 'your-username';
 **Note**: The admin panel is only accessible to users with `isAdmin: true` in the database.
 
 
+

@@ -65,12 +65,27 @@ export const Plot: React.FC<PlotProps> = ({
     }
   };
 
+  const handleTouchStart = (e: React.TouchEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isEditMode) {
+        onMouseDown(plot.id);
+        return;
+    }
+    if (plot.status === 'building') {
+      onInteractBuilding(plot.id);
+    } else {
+      onMouseDown(plot.id);
+    }
+  };
+
   const isDry = plot.status === 'growing' && !plot.isWatered && !plot.hasSprinkler;
   const building = plot.buildingId ? BUILDINGS[plot.buildingId] : null;
 
   return (
     <div 
       onMouseDown={handleMouseDown}
+      onTouchStart={handleTouchStart}
       onMouseEnter={() => plot.status !== 'building' && !isEditMode && onMouseEnter(plot.id)}
       className={`
         w-full h-full rounded-xl relative group transition-all duration-300 select-none cursor-pointer

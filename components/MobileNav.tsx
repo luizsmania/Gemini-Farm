@@ -24,7 +24,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({ activeTab, onTabChange, is
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-lg border-t border-white/10 z-50 safe-area-bottom md:hidden">
-      <div className="flex justify-around items-center h-16">
+      <div className="flex justify-around items-center h-16 overflow-x-auto no-scrollbar">
         {tabs.map(tab => (
           <button
             key={tab.id}
@@ -34,16 +34,16 @@ export const MobileNav: React.FC<MobileNavProps> = ({ activeTab, onTabChange, is
               onTabChange(tab.id);
             }}
             className={`
-              flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-xl transition-all
+              flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 rounded-xl transition-all flex-shrink-0
               ${activeTab === tab.id
                 ? 'text-emerald-400 bg-emerald-500/10 scale-110'
                 : 'text-slate-400 hover:text-slate-200 active:scale-95'
               }
             `}
-            style={{ minWidth: '60px' }}
+            style={{ minWidth: '50px', maxWidth: '70px' }}
           >
             {tab.icon}
-            <span className="text-xs font-medium">{tab.label}</span>
+            <span className="text-[10px] font-medium leading-tight text-center truncate w-full">{tab.label}</span>
           </button>
         ))}
         {isAdmin && onAdminClick && (
@@ -57,12 +57,12 @@ export const MobileNav: React.FC<MobileNavProps> = ({ activeTab, onTabChange, is
               safePreventDefault(e);
               onAdminClick();
             }}
-            className="flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-xl transition-all text-emerald-400 hover:text-emerald-300 active:scale-95"
-            style={{ minWidth: '60px' }}
+            className="flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 rounded-xl transition-all text-emerald-400 hover:text-emerald-300 active:scale-95 flex-shrink-0"
+            style={{ minWidth: '50px', maxWidth: '70px' }}
             title="Admin Panel"
           >
             <Shield size={20} />
-            <span className="text-xs font-medium">Admin</span>
+            <span className="text-[10px] font-medium leading-tight text-center truncate w-full">Admin</span>
           </button>
         )}
       </div>
