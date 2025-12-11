@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Trophy, Coins, TrendingUp, Star, Crown, Medal, Award } from 'lucide-react';
+import { Trophy, Coins, TrendingUp, Star, Crown, Medal, Award, Eye } from 'lucide-react';
 import { LeaderboardEntry } from '../types';
 import { fetchLeaderboard } from '../services/leaderboardService';
 import { Button } from './Button';
+import { PlayerFarmView } from './PlayerFarmView';
 
 interface LeaderboardProps {
   currentUsername?: string;
@@ -15,6 +16,7 @@ export const Leaderboard: React.FC<LeaderboardProps> = ({ currentUsername }) => 
   const [category, setCategory] = useState<LeaderboardCategory>('coins');
   const [loading, setLoading] = useState(false);
   const [playerRank, setPlayerRank] = useState<number | null>(null);
+  const [viewingPlayer, setViewingPlayer] = useState<string | null>(null);
 
   useEffect(() => {
     loadLeaderboard();
@@ -120,9 +122,20 @@ export const Leaderboard: React.FC<LeaderboardProps> = ({ currentUsername }) => 
                       {getRankIcon(entry.rank)}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className={`font-bold text-sm sm:text-base ${isCurrentUser ? 'text-emerald-400' : 'text-slate-200'} truncate`}>
-                        {entry.username}
-                        {isCurrentUser && <span className="ml-1.5 sm:ml-2 text-[10px] sm:text-xs">(You)</span>}
+                      <div className="flex items-center gap-2">
+                        <div className={`font-bold text-sm sm:text-base ${isCurrentUser ? 'text-emerald-400' : 'text-slate-200'} truncate`}>
+                          {entry.username}
+                          {isCurrentUser && <span className="ml-1.5 sm:ml-2 text-[10px] sm:text-xs">(You)</span>}
+                        </div>
+                        {!isCurrentUser && (
+                          <button
+                            onClick={() => setViewingPlayer(entry.username)}
+                            className="p-1 hover:bg-slate-700 rounded transition-colors text-slate-400 hover:text-emerald-400"
+                            title="View Farm"
+                          >
+                            <Eye size={14} />
+                          </button>
+                        )}
                       </div>
                       <div className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1">
                         Level {entry.level}
@@ -162,6 +175,14 @@ export const Leaderboard: React.FC<LeaderboardProps> = ({ currentUsername }) => 
           {loading ? 'Loading...' : 'Refresh'}
         </Button>
       </div>
+
+      {/* Player Farm View Modal */}
+      {viewingPlayer && (
+        <PlayerFarmView
+          username={viewingPlayer}
+          onClose={() => setViewingPlayer(null)}
+        />
+      )}
     </div>
   );
 };

@@ -56,3 +56,4 @@ UPDATE users SET "isAdmin" = true WHERE username = 'your-username';
 
 
 
+

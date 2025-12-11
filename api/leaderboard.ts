@@ -22,7 +22,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const leaderboard: LeaderboardEntry[] = [];
 
-    for (const user of users.rows) {
+    for (const user of users) {
       try {
         const gameState = typeof user.game_state === 'string' 
           ? JSON.parse(user.game_state) 
