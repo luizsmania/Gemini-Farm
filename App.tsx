@@ -663,14 +663,21 @@ const App: React.FC = () => {
   const notifiedMissionsRef = useRef<Set<string>>(new Set());
   const notifiedAchievementsRef = useRef<Set<string>>(new Set());
   const dailyChallengeNotifiedRef = useRef<string | null>(null);
-  const lastGameStateRef = useRef<GameState | null>(null);
+  const lastStatisticsRef = useRef<GameState['statistics'] | null>(null);
 
   // Mission & Achievement Progress Checking
   useEffect(() => {
     if (!currentUser) return;
     
+    // Only check if statistics actually changed (not just reference)
+    const statsChanged = lastStatisticsRef.current === null || 
+      JSON.stringify(gameState.statistics) !== JSON.stringify(lastStatisticsRef.current);
+    
+    if (!statsChanged && gameState.level === (lastStatisticsRef.current?.levelReached || 1)) {
+      return; // Skip if nothing meaningful changed
+    }
+    
     const now = Date.now();
-    const prevState = lastGameStateRef.current || gameState;
     
     setGameState(prev => {
       const { updatedMissions, completedMissions } = checkMissionProgress(prev.missions, prev);
@@ -748,7 +755,7 @@ const App: React.FC = () => {
         }
       }
       
-      // Check daily challenge
+      // Check daily challenge - only if statistics changed or challenge not completed
       let dailyChallenge = prev.dailyChallenge;
       const shouldResetDaily = !dailyChallenge || (now - prev.lastDailyChallengeReset > 24 * 60 * 60 * 1000);
       
@@ -756,31 +763,37 @@ const App: React.FC = () => {
         dailyChallenge = generateDailyChallenge();
         // Reset notification tracking when challenge resets
         dailyChallengeNotifiedRef.current = null;
-      } else if (dailyChallenge) {
-        const wasCompleted = dailyChallenge.completed;
-        const challengeId = dailyChallenge.id;
-        dailyChallenge = checkDailyChallengeProgress(dailyChallenge, prev);
-        // checkDailyChallengeProgress can return null if challenge expired or completed
-        if (dailyChallenge && dailyChallenge.completed && !wasCompleted) {
-          // Only show notification if we haven't shown it for this challenge ID
-          if (dailyChallengeNotifiedRef.current !== challengeId) {
-            dailyChallengeNotifiedRef.current = challengeId;
-            // Use setTimeout to avoid calling showNotification during state update
-            setTimeout(() => {
-              showNotification({
-                type: 'achievement',
-                title: 'Daily Challenge Complete!',
-                message: `+${Math.round((dailyChallenge.rewardMultiplier - 1) * 100)}% bonus active!`,
-                duration: 3000,
-                groupKey: 'daily-challenge-complete' // Group to prevent duplicates
-              });
-            }, 0);
+      } else if (dailyChallenge && statsChanged) {
+        // Only check progress if challenge is not already completed AND stats changed
+        if (!dailyChallenge.completed) {
+          const challengeId = dailyChallenge.id;
+          const updatedChallenge = checkDailyChallengeProgress(dailyChallenge, prev);
+          
+          // If challenge just completed, show notification once
+          if (updatedChallenge && updatedChallenge.completed && !dailyChallenge.completed) {
+            // Only show notification if we haven't shown it for this challenge ID
+            if (dailyChallengeNotifiedRef.current !== challengeId) {
+              dailyChallengeNotifiedRef.current = challengeId;
+              // Use setTimeout to avoid calling showNotification during state update
+              setTimeout(() => {
+                showNotification({
+                  type: 'achievement',
+                  title: 'Daily Challenge Complete!',
+                  message: `+${Math.round((updatedChallenge.rewardMultiplier - 1) * 100)}% bonus active!`,
+                  duration: 3000,
+                  groupKey: 'daily-challenge-complete' // Group to prevent duplicates
+                });
+              }, 0);
+            }
+            dailyChallenge = updatedChallenge;
+          } else if (updatedChallenge) {
+            dailyChallenge = updatedChallenge;
+          } else {
+            // Challenge expired
+            dailyChallenge = null;
           }
         }
-        // If challenge was completed/expired, set to null
-        if (!dailyChallenge) {
-          dailyChallenge = null;
-        }
+        // If challenge is already completed, keep it as is (don't re-check)
       }
       
       const newState = {
@@ -798,8 +811,8 @@ const App: React.FC = () => {
         lastDailyChallengeReset: shouldResetDaily ? now : prev.lastDailyChallengeReset
       };
       
-      // Update ref to track last state
-      lastGameStateRef.current = newState;
+      // Update ref to track last statistics
+      lastStatisticsRef.current = newState.statistics;
       
       return newState;
     });
@@ -811,7 +824,7 @@ const App: React.FC = () => {
       notifiedMissionsRef.current.clear();
       notifiedAchievementsRef.current.clear();
       dailyChallengeNotifiedRef.current = null;
-      lastGameStateRef.current = null;
+      lastStatisticsRef.current = null;
     }
   }, [currentUser]);
 
