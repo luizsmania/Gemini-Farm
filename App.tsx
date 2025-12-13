@@ -210,7 +210,7 @@ const App: React.FC = () => {
 
   // Initialize Crypto Market (runs once on mount)
   useEffect(() => {
-    // Initialize market
+    // Initialize market immediately
     initializeMarket();
     startMarketUpdates();
 

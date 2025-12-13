@@ -25,6 +25,7 @@ export const CryptoTradingView: React.FC<CryptoTradingViewProps> = ({
   const [selectedCrypto, setSelectedCrypto] = useState<CryptoId>(CryptoId.BTC);
   const [activeTab, setActiveTab] = useState<ViewTab>('market');
   const [cryptoList, setCryptoList] = useState<CryptoId[]>(Object.values(CryptoId));
+  const [chartTimeframe, setChartTimeframe] = useState<'1m' | '5m' | '15m' | '1h' | '24h'>('15m');
 
   const tabs = [
     { id: 'market' as ViewTab, label: 'Market', icon: BarChart3 },
@@ -113,7 +114,12 @@ export const CryptoTradingView: React.FC<CryptoTradingViewProps> = ({
           {/* Left Column - Chart */}
           {(activeTab === 'market' || activeTab === 'trade') && (
             <div className="lg:col-span-2">
-              <CryptoChart cryptoId={selectedCrypto} timeframe="15m" height={400} />
+              <CryptoChart 
+                cryptoId={selectedCrypto} 
+                timeframe={chartTimeframe} 
+                height={400}
+                onTimeframeChange={setChartTimeframe}
+              />
             </div>
           )}
 

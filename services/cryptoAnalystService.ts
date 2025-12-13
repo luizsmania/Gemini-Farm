@@ -30,9 +30,22 @@ export const analyzeCrypto = async (cryptoId: CryptoId): Promise<CryptoPredictio
   const currentPrice = getCurrentPrice(cryptoId);
   const priceHistory = getPriceHistory(cryptoId, '15m');
   
-  if (priceHistory.length < 10) {
-    // Not enough data
-    return null;
+  // Need at least 10 data points for meaningful analysis
+  // But we can still generate a basic prediction with less data
+  if (priceHistory.length < 3) {
+    // Not enough data yet, return a basic neutral prediction
+    const basicPrediction: CryptoPrediction = {
+      cryptoId,
+      prediction: 'neutral',
+      confidence: 50,
+      reason: `${crypto.name} analysis will be available once more market data is collected.`,
+      expectedChange: 0,
+      timeframe: 'short-term',
+      expiresAt: now + 60000 // 1 minute
+    };
+    predictionCache[cryptoId] = basicPrediction;
+    lastAnalysisTime[cryptoId] = now;
+    return basicPrediction;
   }
 
   // Simple technical analysis

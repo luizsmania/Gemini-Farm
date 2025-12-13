@@ -25,17 +25,32 @@ let listeners: Set<(state: Record<CryptoId, CryptoMarketState>) => void> = new S
 // Initialize market state for all cryptos
 export const initializeMarket = (): Record<CryptoId, CryptoMarketState> => {
   const state: Record<CryptoId, CryptoMarketState> = {} as Record<CryptoId, CryptoMarketState>;
+  const now = Date.now();
   
   Object.values(CryptoId).forEach(cryptoId => {
     const crypto = CRYPTOS[cryptoId];
+    
+    // Pre-populate price history with 60 data points (1 minute of data at 1 second intervals)
+    // This ensures charts have data to display immediately
+    const priceHistory: PriceHistory[] = [];
+    let currentPrice = crypto.basePrice;
+    
+    for (let i = 59; i >= 0; i--) {
+      // Simulate some price variation
+      const variation = (Math.random() - 0.5) * 0.02; // ±1% variation
+      currentPrice = crypto.basePrice * (1 + variation);
+      
+      priceHistory.push({
+        timestamp: now - (i * 1000), // Backfill 60 seconds of history
+        price: Math.max(crypto.basePrice * 0.95, Math.min(crypto.basePrice * 1.05, currentPrice)),
+        volume: Math.random() * 1000000
+      });
+    }
+    
     state[cryptoId] = {
       cryptoId,
-      currentPrice: crypto.basePrice,
-      priceHistory: [{
-        timestamp: Date.now(),
-        price: crypto.basePrice,
-        volume: 0
-      }],
+      currentPrice: priceHistory[priceHistory.length - 1].price,
+      priceHistory,
       trendDirection: (Math.random() - 0.5) * 2, // -1 to 1
       trendStrength: Math.random() * 0.5 + 0.25, // 0.25 to 0.75
       eventMultiplier: 1.0,
@@ -159,15 +174,21 @@ const updatePrices = () => {
 // Start price updates
 export const startMarketUpdates = (): void => {
   if (priceUpdateInterval) {
+    console.log('Market updates already running');
     return; // Already running
   }
   
   // Initialize if not already done
   if (Object.keys(marketState).length === 0) {
+    console.log('Initializing market before starting updates');
     initializeMarket();
   }
   
+  console.log('Starting market price updates every', PRICE_UPDATE_INTERVAL, 'ms');
   priceUpdateInterval = setInterval(updatePrices, PRICE_UPDATE_INTERVAL);
+  
+  // Do an initial update immediately
+  updatePrices();
 };
 
 // Stop price updates
@@ -213,8 +234,21 @@ export const getPriceHistory = (
   cryptoId: CryptoId, 
   timeframe?: '1m' | '5m' | '15m' | '1h' | '24h'
 ): PriceHistory[] => {
+  // Ensure market is initialized
+  if (Object.keys(marketState).length === 0) {
+    initializeMarket();
+  }
+  
   const market = marketState[cryptoId];
-  if (!market) return [];
+  if (!market || !market.priceHistory || market.priceHistory.length === 0) {
+    // Return at least base price if no history
+    const crypto = CRYPTOS[cryptoId];
+    return [{
+      timestamp: Date.now(),
+      price: crypto.basePrice,
+      volume: 0
+    }];
+  }
   
   const now = Date.now();
   const timeframeMs = timeframe === '1m' ? 60000 :
@@ -224,9 +258,12 @@ export const getPriceHistory = (
                       timeframe === '24h' ? 86400000 :
                       Infinity;
   
-  return market.priceHistory.filter(
+  const filtered = market.priceHistory.filter(
     point => now - point.timestamp <= timeframeMs
   );
+  
+  // Ensure we return at least some data
+  return filtered.length > 0 ? filtered : market.priceHistory.slice(-60);
 };
 
 // Reset market (for testing or new game)

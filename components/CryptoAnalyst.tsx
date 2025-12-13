@@ -14,25 +14,6 @@ export const CryptoAnalyst: React.FC<CryptoAnalystProps> = ({ cryptoId }) => {
   const [loading, setLoading] = useState<Record<CryptoId, boolean>>({} as Record<CryptoId, boolean>);
   const [selectedCrypto, setSelectedCrypto] = useState<CryptoId | null>(cryptoId || CryptoId.BTC);
 
-  useEffect(() => {
-    // Load existing predictions
-    Object.values(CryptoId).forEach(id => {
-      const pred = getPrediction(id);
-      if (pred) {
-        setPredictions(prev => ({ ...prev, [id]: pred }));
-      }
-    });
-
-    // Auto-analyze every 30 seconds
-    const interval = setInterval(() => {
-      if (selectedCrypto && !loading[selectedCrypto]) {
-        handleAnalyze(selectedCrypto);
-      }
-    }, 30000);
-
-    return () => clearInterval(interval);
-  }, [selectedCrypto, loading]);
-
   const handleAnalyze = async (id: CryptoId) => {
     setLoading(prev => ({ ...prev, [id]: true }));
     try {
@@ -46,6 +27,31 @@ export const CryptoAnalyst: React.FC<CryptoAnalystProps> = ({ cryptoId }) => {
       setLoading(prev => ({ ...prev, [id]: false }));
     }
   };
+
+  useEffect(() => {
+    // Load existing predictions
+    Object.values(CryptoId).forEach(id => {
+      const pred = getPrediction(id);
+      if (pred) {
+        setPredictions(prev => ({ ...prev, [id]: pred }));
+      }
+    });
+
+    // Auto-analyze immediately for selected crypto
+    if (selectedCrypto) {
+      handleAnalyze(selectedCrypto);
+    }
+
+    // Auto-analyze every 30 seconds
+    const interval = setInterval(() => {
+      if (selectedCrypto) {
+        handleAnalyze(selectedCrypto);
+      }
+    }, 30000);
+
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCrypto]);
 
   const prediction = selectedCrypto ? predictions[selectedCrypto] : null;
   const isLoading = selectedCrypto ? loading[selectedCrypto] : false;

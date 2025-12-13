@@ -8,12 +8,14 @@ interface CryptoChartProps {
   cryptoId: CryptoId;
   timeframe?: '1m' | '5m' | '15m' | '1h' | '24h';
   height?: number;
+  onTimeframeChange?: (timeframe: '1m' | '5m' | '15m' | '1h' | '24h') => void;
 }
 
 export const CryptoChart: React.FC<CryptoChartProps> = ({ 
   cryptoId, 
   timeframe = '15m',
-  height = 300 
+  height = 300,
+  onTimeframeChange
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [priceHistory, setPriceHistory] = useState<PriceHistory[]>([]);
@@ -23,21 +25,35 @@ export const CryptoChart: React.FC<CryptoChartProps> = ({
 
   useEffect(() => {
     // Get initial price history
-    const history = getPriceHistory(cryptoId, timeframe);
-    setPriceHistory(history);
-    
-    if (history.length > 0) {
-      const latest = history[history.length - 1];
-      setCurrentPrice(latest.price);
+    const updateChart = () => {
+      const history = getPriceHistory(cryptoId, timeframe);
+      setPriceHistory(history);
       
-      if (history.length > 1) {
-        const oldest = history[0];
-        const change = latest.price - oldest.price;
-        const changePercent = (change / oldest.price) * 100;
-        setPriceChange(change);
-        setPriceChangePercent(changePercent);
+      if (history.length > 0) {
+        const latest = history[history.length - 1];
+        setCurrentPrice(latest.price);
+        
+        if (history.length > 1) {
+          const oldest = history[0];
+          const change = latest.price - oldest.price;
+          const changePercent = (change / oldest.price) * 100;
+          setPriceChange(change);
+          setPriceChangePercent(changePercent);
+        } else {
+          // If only 1 data point, set change to 0
+          setPriceChange(0);
+          setPriceChangePercent(0);
+        }
+      } else {
+        // Fallback to base price if no history
+        const crypto = CRYPTOS[cryptoId];
+        setCurrentPrice(crypto.basePrice);
+        setPriceChange(0);
+        setPriceChangePercent(0);
       }
-    }
+    };
+
+    updateChart();
 
     // Subscribe to market updates
     const unsubscribe = subscribeToMarket((marketState) => {
@@ -53,6 +69,9 @@ export const CryptoChart: React.FC<CryptoChartProps> = ({
           const changePercent = (change / oldest.price) * 100;
           setPriceChange(change);
           setPriceChangePercent(changePercent);
+        } else {
+          setPriceChange(0);
+          setPriceChangePercent(0);
         }
       }
     });
@@ -60,25 +79,48 @@ export const CryptoChart: React.FC<CryptoChartProps> = ({
     return unsubscribe;
   }, [cryptoId, timeframe]);
 
+  // Update canvas when price history or dimensions change
   useEffect(() => {
-    if (!canvasRef.current || priceHistory.length === 0) return;
-
+    if (!canvasRef.current) return;
+    
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+    
+    // Set canvas size
+    const dpr = window.devicePixelRatio || 1;
+    const container = canvas.parentElement;
+    const displayWidth = container ? container.clientWidth || 800 : 800;
+    const displayHeight = height;
+    
+    canvas.width = displayWidth * dpr;
+    canvas.height = displayHeight * dpr;
+    ctx.scale(dpr, dpr);
+    canvas.style.width = `${displayWidth}px`;
+    canvas.style.height = `${displayHeight}px`;
+    
+    if (priceHistory.length < 2) {
+      // Clear and show loading
+      ctx.clearRect(0, 0, displayWidth, displayHeight);
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(0, 0, displayWidth, displayHeight);
+      ctx.fillStyle = '#64748b';
+      ctx.font = '14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Loading chart data...', displayWidth / 2, displayHeight / 2);
+      return;
+    }
 
-    const width = canvas.width;
-    const height = canvas.height;
+    const width = displayWidth;
+    const canvasHeight = displayHeight;
     const padding = 40;
 
     // Clear canvas
-    ctx.clearRect(0, 0, width, height);
+    ctx.clearRect(0, 0, width, canvasHeight);
 
     // Set background
     ctx.fillStyle = '#0f172a';
-    ctx.fillRect(0, 0, width, height);
-
-    if (priceHistory.length < 2) return;
+    ctx.fillRect(0, 0, width, canvasHeight);
 
     // Find min and max prices for scaling
     const prices = priceHistory.map(p => p.price);
@@ -88,7 +130,7 @@ export const CryptoChart: React.FC<CryptoChartProps> = ({
 
     // Calculate chart dimensions
     const chartWidth = width - padding * 2;
-    const chartHeight = height - padding * 2;
+    const chartHeight = canvasHeight - padding * 2;
 
     // Draw grid lines
     ctx.strokeStyle = '#1e293b';
@@ -127,7 +169,7 @@ export const CryptoChart: React.FC<CryptoChartProps> = ({
       const lastX = padding + chartWidth;
       const lastY = padding + chartHeight - ((lastPoint.price - minPrice) / priceRange) * chartHeight;
 
-      const gradient = ctx.createLinearGradient(0, padding, 0, height - padding);
+      const gradient = ctx.createLinearGradient(0, padding, 0, canvasHeight - padding);
       gradient.addColorStop(0, priceChange >= 0 ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)');
       gradient.addColorStop(1, 'rgba(16, 185, 129, 0)' as string);
 
@@ -167,7 +209,14 @@ export const CryptoChart: React.FC<CryptoChartProps> = ({
       const y = padding + (chartHeight / 5) * i;
       ctx.fillText(price.toFixed(2), padding - 10, y + 4);
     }
-  }, [priceHistory, priceChange]);
+    
+    // Re-render on window resize
+    window.addEventListener('resize', updateCanvasSize);
+    
+    return () => {
+      window.removeEventListener('resize', updateCanvasSize);
+    };
+  }, [priceHistory, priceChange, height]);
 
   const crypto = CRYPTOS[cryptoId];
   const isPositive = priceChange >= 0;
@@ -197,14 +246,22 @@ export const CryptoChart: React.FC<CryptoChartProps> = ({
       </div>
 
       {/* Chart */}
-      <div className="relative">
+      <div className="relative" style={{ height: `${height}px` }}>
         <canvas
           ref={canvasRef}
           width={800}
           height={height}
           className="w-full h-full"
-          style={{ maxWidth: '100%', height: `${height}px` }}
+          style={{ maxWidth: '100%', height: `${height}px`, display: priceHistory.length < 2 ? 'none' : 'block' }}
         />
+        {priceHistory.length < 2 && (
+          <div className="absolute inset-0 bg-slate-800 rounded-lg flex items-center justify-center border border-slate-700">
+            <div className="text-center">
+              <div className="text-slate-400 mb-2">Loading chart data...</div>
+              <div className="text-xs text-slate-500">Collecting price history</div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Timeframe selector */}
@@ -212,6 +269,7 @@ export const CryptoChart: React.FC<CryptoChartProps> = ({
         {(['1m', '5m', '15m', '1h', '24h'] as const).map((tf) => (
           <button
             key={tf}
+            onClick={() => onTimeframeChange?.(tf)}
             className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
               timeframe === tf
                 ? 'bg-emerald-600 text-white'
