@@ -39,6 +39,11 @@ import { PrestigePanel } from './components/PrestigePanel';
 import { MobileNav } from './components/MobileNav';
 import { Leaderboard } from './components/Leaderboard';
 import { safePreventDefault } from './utils/eventHelpers';
+// Crypto trading imports
+import { CryptoTradingView } from './components/CryptoTradingView';
+import { initializeMarket, startMarketUpdates } from './services/cryptoMarketService';
+import { createInitialPortfolio } from './services/cryptoTradingService';
+import { updatePortfolioValue, processPendingOrders } from './services/cryptoTradingService';
 
 type Tab = 'field' | 'shop' | 'market' | 'missions' | 'achievements' | 'leaderboard';
 type DragAction = 'plant' | 'harvest' | 'water' | null;
@@ -80,7 +85,9 @@ const createDefaultGameState = (): GameState => ({
     researchTree: {},
     automationLevel: 0,
     comboBonus: 1,
-    lastComboTime: 0
+    lastComboTime: 0,
+    // Crypto portfolio
+    cryptoPortfolio: createInitialPortfolio()
 });
 
 const DEFAULT_GAME_STATE = createDefaultGameState();
@@ -199,6 +206,48 @@ const App: React.FC = () => {
       setCurrentUser({ ...sessionUser, isAdmin });
     }
     setAuthChecked(true);
+  }, []);
+
+  // Initialize Crypto Market (runs once on mount)
+  useEffect(() => {
+    // Initialize market
+    initializeMarket();
+    startMarketUpdates();
+
+    // Cleanup on unmount
+    return () => {
+      // Note: We don't stop market updates as they should run continuously
+      // But if needed, we can call stopMarketUpdates() here
+    };
+  }, []);
+
+  // Initialize portfolio if not exists and update portfolio value periodically
+  useEffect(() => {
+    setGameState(prev => {
+      if (!prev.cryptoPortfolio) {
+        return {
+          ...prev,
+          cryptoPortfolio: createInitialPortfolio()
+        };
+      }
+      return prev;
+    });
+
+    // Update portfolio value every 5 seconds
+    const portfolioUpdateInterval = setInterval(() => {
+      setGameState(prev => {
+        if (prev.cryptoPortfolio) {
+          // Process pending orders
+          processPendingOrders(prev.cryptoPortfolio);
+          // Update portfolio value
+          updatePortfolioValue(prev.cryptoPortfolio);
+          return { ...prev };
+        }
+        return prev;
+      });
+    }, 5000);
+
+    return () => clearInterval(portfolioUpdateInterval);
   }, []);
 
   // WebSocket: Connect and listen for real-time updates
@@ -1652,6 +1701,43 @@ const App: React.FC = () => {
   }
   if (!currentUser) return <AuthScreen onSuccess={setCurrentUser} />;
   
+  // Show crypto trading view instead of farming game
+  if (gameState.cryptoPortfolio) {
+    return (
+      <>
+        <CryptoTradingView
+          portfolio={gameState.cryptoPortfolio}
+          onPortfolioUpdate={(updatedPortfolio) => {
+            setGameState(prev => {
+              const newState = {
+                ...prev,
+                cryptoPortfolio: updatedPortfolio
+              };
+              // Auto-save portfolio updates
+              if (currentUser) {
+                import('./services/databaseService').then(({ saveGameState }) => {
+                  saveGameState(currentUser.username, newState).catch(console.error);
+                });
+              }
+              return newState;
+            });
+          }}
+        />
+        {/* Notification Container */}
+        <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none max-w-[calc(100vw-1rem)] sm:max-w-none">
+          {notifications.slice(0, 5).map(notification => (
+            <div key={notification.id} className="pointer-events-auto">
+              <NotificationItem
+                notification={notification}
+                onClose={() => removeNotification(notification.id)}
+              />
+            </div>
+          ))}
+        </div>
+      </>
+    );
+  }
+  
   if (isLoadingSave) {
     return (
       <div className="min-h-screen bg-[#111827] flex items-center justify-center">
@@ -1669,7 +1755,7 @@ const App: React.FC = () => {
     `}>
         {/* Weather Effects */}
         <WeatherEffects weather={gameState.weather} season={gameState.season} />
-        
+
         {/* Particle Effects */}
         <ParticleEffects particles={particles} onRemove={removeParticle} />
         

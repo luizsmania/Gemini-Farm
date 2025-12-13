@@ -1,4 +1,5 @@
 
+// Legacy crop types (keeping for backward compatibility during transition)
 export enum CropId {
   WHEAT = 'wheat',
   CORN = 'corn',
@@ -14,6 +15,19 @@ export enum CropId {
   WATERMELON = 'watermelon',
   BLUEBERRY = 'blueberry',
   APPLE = 'apple'
+}
+
+// Cryptocurrency types
+export enum CryptoId {
+  BTC = 'btc',
+  ETH = 'eth',
+  LTC = 'ltc',
+  DOGE = 'doge',
+  SOL = 'sol',
+  ADA = 'ada',
+  DOT = 'dot',
+  LINK = 'link',
+  GEM = 'gem'
 }
 
 export enum ProductId {
@@ -72,6 +86,21 @@ export interface CropData {
   unlockLevel: number;
   xpReward: number;
   seasonAffinity: Season;
+}
+
+// Cryptocurrency data structure
+export interface CryptoData {
+  id: CryptoId;
+  symbol: string;
+  name: string;
+  emoji: string;
+  description: string;
+  basePrice: number; // Starting/base price in USD
+  volatility: number; // 0-1 scale, how much price fluctuates
+  trendPeriod: number; // How long trends last (ms)
+  marketCapTier: 'large' | 'mid' | 'small' | 'micro'; // Affects price movements
+  color: string; // Color theme for UI
+  unlockLevel: number;
 }
 
 export interface ProductData {
@@ -170,6 +199,8 @@ export interface GameState {
   automationLevel: number; // 0-5, affects auto-harvesting
   comboBonus: number; // Current combo multiplier
   lastComboTime: number; // Timestamp for combo decay
+  // Crypto portfolio (new)
+  cryptoPortfolio?: CryptoPortfolio;
 }
 
 export interface MarketTrend {
@@ -279,4 +310,55 @@ export interface ParticleEffect {
   y: number;
   value?: number;
   createdAt: number;
+}
+
+// Crypto market types
+export interface PriceHistory {
+  timestamp: number;
+  price: number;
+  volume: number;
+}
+
+export interface CryptoMarketState {
+  cryptoId: CryptoId;
+  currentPrice: number;
+  priceHistory: PriceHistory[]; // Last 1000 data points
+  trendDirection: number; // -1 to 1, negative = down, positive = up
+  trendStrength: number; // 0 to 1
+  eventMultiplier: number; // 1.0 = normal, >1.0 = pump, <1.0 = dump
+  eventEndsAt: number | null; // When event multiplier expires
+}
+
+export type OrderType = 'market' | 'limit' | 'stop_loss' | 'take_profit' | 'stop_limit';
+
+export interface Order {
+  id: string;
+  cryptoId: CryptoId;
+  type: OrderType;
+  side: 'buy' | 'sell';
+  quantity: number;
+  price?: number; // For limit/stop orders
+  stopPrice?: number; // For stop orders
+  executedPrice?: number;
+  status: 'pending' | 'filled' | 'cancelled' | 'expired';
+  createdAt: number;
+  executedAt?: number;
+}
+
+export interface CryptoPosition {
+  cryptoId: CryptoId;
+  quantity: number;
+  averageBuyPrice: number;
+  totalInvested: number;
+  firstBoughtAt: number;
+  lastBoughtAt: number;
+}
+
+export interface CryptoPortfolio {
+  cashBalance: number; // USD
+  positions: Record<CryptoId, CryptoPosition>; // Holdings
+  orders: Order[]; // Pending orders
+  totalValue: number; // Current portfolio value (cash + crypto)
+  totalInvested: number; // Total money invested
+  totalProfit: number; // Total profit/loss
 }
