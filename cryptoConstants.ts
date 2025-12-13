@@ -135,6 +135,3 @@ export const EVENT_DURATION_MAX = 120000; // 2 minutes
 export const MARKET_ORDER_FEE = 0.005; // 0.5%
 export const INITIAL_CASH_BALANCE = 500; // Starting USD ($500 for everyone)
 export const MIN_TRADE_AMOUNT = 1; // Minimum USD to trade
-
-// Re-export for convenience
-export { CRYPTOS };
