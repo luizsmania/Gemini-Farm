@@ -26,7 +26,7 @@ export interface GameState {
 
 // WebSocket message types
 export interface ClientMessage {
-  type: 'SET_NICKNAME' | 'CREATE_LOBBY' | 'JOIN_LOBBY' | 'MOVE' | 'REMATCH_ACCEPT' | 'LEAVE_MATCH' | 'CHAT_MESSAGE';
+  type: 'SET_NICKNAME' | 'CREATE_LOBBY' | 'JOIN_LOBBY' | 'MOVE' | 'REMATCH_ACCEPT' | 'LEAVE_MATCH' | 'CHAT_MESSAGE' | 'REJOIN_MATCH';
   nickname?: string;
   playerId?: string; // For reconnection
   lobbyId?: string;
@@ -37,7 +37,7 @@ export interface ClientMessage {
 }
 
 export interface ServerMessage {
-  type: 'NICKNAME_SET' | 'LOBBY_LIST' | 'GAME_START' | 'MOVE_ACCEPTED' | 'MOVE_REJECTED' | 'GAME_OVER' | 'ERROR' | 'PLAYER_DISCONNECTED' | 'REMATCH_REQUEST' | 'MATCH_ENDED' | 'CHAT_MESSAGE';
+  type: 'NICKNAME_SET' | 'LOBBY_LIST' | 'GAME_START' | 'MOVE_ACCEPTED' | 'MOVE_REJECTED' | 'GAME_OVER' | 'ERROR' | 'PLAYER_DISCONNECTED' | 'REMATCH_REQUEST' | 'MATCH_ENDED' | 'CHAT_MESSAGE' | 'MATCH_LEAVING';
   lobbies?: LobbyInfo[];
   matchId?: string;
   yourColor?: Color;
@@ -55,6 +55,7 @@ export interface ServerMessage {
   senderNickname?: string;
   opponentNickname?: string;
   timestamp?: number;
+  timeRemaining?: number;
 }
 
 export interface LobbyInfo {
@@ -62,6 +63,7 @@ export interface LobbyInfo {
   playerCount: number;
   maxPlayers: number;
   creatorNickname?: string; // Nickname of the player who created the lobby
+  isCurrentMatch?: boolean; // True if this is the player's current match they're leaving
 }
 
 export interface MatchHistory {

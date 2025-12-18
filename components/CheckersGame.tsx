@@ -38,9 +38,12 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   const [chatMessages, setChatMessages] = useState<Array<{ senderNickname: string; message: string; timestamp: number; isOwn: boolean }>>([]);
   const [chatInput, setChatInput] = useState('');
   const [opponentNickname, setOpponentNickname] = useState<string>('Opponent');
+  const [isLeaving, setIsLeaving] = useState(false);
+  const [leaveTimeRemaining, setLeaveTimeRemaining] = useState<number>(0);
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
   const moveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const errorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const leaveCountdownRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const handleMoveAccepted = (message: ServerMessage) => {
@@ -107,7 +110,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
 
     const handleGameStart = (message: ServerMessage) => {
       if (message.type === 'GAME_START' && message.matchId && message.board) {
-        // Rematch or reconnection - reset/update game state
+        // Rematch, reconnection, or rejoin - reset/update game state
         setMatchId(message.matchId);
         setBoard(message.board);
         setCurrentTurn(message.nextTurn || 'red'); // Use current turn from server
@@ -118,7 +121,13 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         setContinueJumpFrom(null);
         setError(null);
         setShowRematch(false);
-        setChatMessages([]); // Clear chat on rematch/reconnection
+        setIsLeaving(false); // Cancel leave state if rejoining
+        setLeaveTimeRemaining(0);
+        if (leaveCountdownRef.current) {
+          clearInterval(leaveCountdownRef.current);
+          leaveCountdownRef.current = null;
+        }
+        // Don't clear chat on rejoin - keep chat history
         if (message.opponentNickname) {
           setOpponentNickname(message.opponentNickname);
         }
@@ -143,6 +152,15 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       }
     };
 
+    const handleMatchLeaving = (message: ServerMessage) => {
+      if (message.type === 'MATCH_LEAVING' && message.matchId) {
+        // This message is received when user is already back at hub
+        // The countdown is handled by the server, but we can show a notification
+        // The match will appear in lobby list with "Current Match" label
+        console.log('Match leaving - 30 second grace period started');
+      }
+    };
+
     checkersWebSocketService.on('MOVE_ACCEPTED', handleMoveAccepted);
     checkersWebSocketService.on('MOVE_REJECTED', handleMoveRejected);
     checkersWebSocketService.on('GAME_OVER', handleGameOver);
@@ -150,6 +168,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     checkersWebSocketService.on('REMATCH_REQUEST', handleRematchRequest);
     checkersWebSocketService.on('GAME_START', handleGameStart);
     checkersWebSocketService.on('CHAT_MESSAGE', handleChatMessage);
+    checkersWebSocketService.on('MATCH_LEAVING', handleMatchLeaving);
 
     return () => {
       checkersWebSocketService.off('MOVE_ACCEPTED', handleMoveAccepted);
@@ -159,6 +178,11 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       checkersWebSocketService.off('REMATCH_REQUEST', handleRematchRequest);
       checkersWebSocketService.off('GAME_START', handleGameStart);
       checkersWebSocketService.off('CHAT_MESSAGE', handleChatMessage);
+      checkersWebSocketService.off('MATCH_LEAVING', handleMatchLeaving);
+      // Clear leave countdown on unmount
+      if (leaveCountdownRef.current) {
+        clearInterval(leaveCountdownRef.current);
+      }
       // Clear timeouts on unmount
       if (moveTimeoutRef.current) {
         clearTimeout(moveTimeoutRef.current);
@@ -541,9 +565,23 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   };
 
   const handleLeave = () => {
+    // Start 30-second leave grace period
     checkersWebSocketService.leaveMatch(matchId);
-    setChatMessages([]); // Clear chat when leaving
+    // Navigate to hub so user can see "Current Match" in lobby list
+    // The server will send MATCH_LEAVING message which will start the countdown
+    // After 30 seconds, onLeave() will be called automatically
     onLeave();
+  };
+
+  const handleRejoinMatch = () => {
+    // Cancel leave and rejoin
+    if (leaveCountdownRef.current) {
+      clearInterval(leaveCountdownRef.current);
+      leaveCountdownRef.current = null;
+    }
+    setIsLeaving(false);
+    setLeaveTimeRemaining(0);
+    checkersWebSocketService.rejoinMatch(matchId);
   };
 
   const handleSendChat = (e: React.FormEvent) => {
@@ -629,10 +667,21 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
                       Continue jump!
                     </span>
                   )}
+                  {isLeaving && (
+                    <span className="text-[10px] sm:text-xs text-orange-400 bg-orange-400/20 px-1.5 py-0.5 rounded">
+                      Leaving in {leaveTimeRemaining}s
+                    </span>
+                  )}
                 </div>
-                <Button onClick={handleLeave} variant="danger" size="sm" className="!p-1.5 sm:!p-2">
-                  <X size={16} className="sm:w-4 sm:h-4" />
-                </Button>
+                {isLeaving ? (
+                  <Button onClick={handleRejoinMatch} variant="secondary" size="sm" className="!p-1.5 sm:!p-2">
+                    Rejoin
+                  </Button>
+                ) : (
+                  <Button onClick={handleLeave} variant="danger" size="sm" className="!p-1.5 sm:!p-2">
+                    <X size={16} className="sm:w-4 sm:h-4" />
+                  </Button>
+                )}
               </div>
 
               {/* Opponent Info (Top) */}

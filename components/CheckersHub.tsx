@@ -109,6 +109,7 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
 
     const handleGameStart = (message: ServerMessage) => {
       if (message.type === 'GAME_START' && message.matchId && message.yourColor && message.board) {
+        // If rejoining, we need to update the view to game
         onGameStart(message.matchId, message.yourColor, message.board);
       }
     };
@@ -249,23 +250,38 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
               {lobbies.map((lobby) => (
                 <div
                   key={lobby.id}
-                  className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 p-3 sm:p-4 bg-slate-700/50 rounded-lg hover:bg-slate-700 transition-colors"
+                  className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 p-3 sm:p-4 rounded-lg hover:bg-slate-700 transition-colors ${
+                    lobby.isCurrentMatch 
+                      ? 'bg-orange-500/20 border-2 border-orange-500/50' 
+                      : 'bg-slate-700/50'
+                  }`}
                 >
                   <div className="flex-1">
-                    <div className="text-white font-semibold text-sm sm:text-base">
-                      Lobby with {lobby.creatorNickname || 'Unknown'} - {lobby.id.slice(-8)}
+                    <div className="flex items-center gap-2">
+                      <div className="text-white font-semibold text-sm sm:text-base">
+                        {lobby.isCurrentMatch ? (
+                          <span className="text-orange-400">Current Match</span>
+                        ) : (
+                          <>Lobby with {lobby.creatorNickname || 'Unknown'} - {lobby.id.slice(-8)}</>
+                        )}
+                      </div>
+                      {lobby.isCurrentMatch && (
+                        <span className="text-[10px] sm:text-xs text-orange-400 bg-orange-400/20 px-1.5 py-0.5 rounded">
+                          Rejoin
+                        </span>
+                      )}
                     </div>
                     <div className="text-slate-400 text-xs sm:text-sm">
                       {lobby.playerCount}/{lobby.maxPlayers} players
                     </div>
                   </div>
                   <Button
-                    onClick={() => handleJoinLobby(lobby.id)}
-                    disabled={loading || lobby.playerCount >= lobby.maxPlayers}
+                    onClick={() => lobby.isCurrentMatch ? handleJoinLobby(lobby.id) : handleJoinLobby(lobby.id)}
+                    disabled={loading || (!lobby.isCurrentMatch && lobby.playerCount >= lobby.maxPlayers)}
                     size="sm"
                     className="w-full sm:w-auto"
                   >
-                    {lobby.playerCount >= lobby.maxPlayers ? 'Full' : 'Join'}
+                    {lobby.isCurrentMatch ? 'Rejoin Match' : (lobby.playerCount >= lobby.maxPlayers ? 'Full' : 'Join')}
                   </Button>
                 </div>
               ))}

@@ -54,6 +54,8 @@ const playerToGame = new Map<string, string>(); // playerId -> matchId
 const playerDisconnectTimers = new Map<string, NodeJS.Timeout>();
 const rematchRequests = new Map<string, Set<string>>(); // matchId -> Set of playerIds who requested rematch
 const playerNicknames = new Map<string, string>(); // playerId -> nickname
+const playerLeaveTimers = new Map<string, NodeJS.Timeout>(); // playerId -> leave timer
+const leavingPlayers = new Map<string, string>(); // playerId -> matchId (players who clicked leave but have 30s grace period)
 
 // Clean up lobby after a delay (in case of errors)
 function cleanupLobby(lobbyId: string) {
@@ -69,7 +71,7 @@ function cleanupLobby(lobbyId: string) {
 }
 
 // Broadcast lobby list to all connected clients
-function broadcastLobbyList() {
+function broadcastLobbyList(playerId?: string) {
   const lobbyList = Array.from(lobbies.values())
     .filter(lobby => lobby.players.length < lobby.maxPlayers)
     .map(lobby => {
@@ -82,7 +84,31 @@ function broadcastLobbyList() {
       };
     });
   
-  io.emit('LOBBY_LIST', { type: 'LOBBY_LIST', lobbies: lobbyList } as ServerMessage);
+  // Add active games that the player is leaving from (30-second grace period)
+  if (playerId) {
+    const leavingMatchId = leavingPlayers.get(playerId);
+    if (leavingMatchId) {
+      const game = activeGames.get(leavingMatchId);
+      if (game) {
+        const opponentId = playerId === game.playerRed ? game.playerBlack : game.playerRed;
+        const opponentNickname = playerNicknames.get(opponentId) || 'Opponent';
+        lobbyList.unshift({
+          id: leavingMatchId,
+          playerCount: 1, // Player is leaving, so only opponent remains
+          maxPlayers: 2,
+          creatorNickname: opponentNickname,
+          isCurrentMatch: true, // Flag to show "Current Match" label
+        });
+      }
+    }
+  }
+  
+  // Send to specific player if provided, otherwise broadcast to all
+  if (playerId) {
+    io.to(`player:${playerId}`).emit('LOBBY_LIST', { type: 'LOBBY_LIST', lobbies: lobbyList } as ServerMessage);
+  } else {
+    io.emit('LOBBY_LIST', { type: 'LOBBY_LIST', lobbies: lobbyList } as ServerMessage);
+  }
 }
 
 // Start a new game
@@ -399,12 +425,12 @@ io.on('connection', (socket) => {
     
     lobbies.set(lobbyId, lobby);
     socket.join(`lobby:${lobbyId}`);
-    broadcastLobbyList();
+    broadcastLobbyList(currentPlayerId);
     
     console.log(`Lobby ${lobbyId} created by ${currentNickname}`);
   });
   
-  // Join lobby
+  // Join lobby (or rejoin match)
   socket.on('JOIN_LOBBY', (message: ClientMessage) => {
     if (!currentPlayerId) {
       socket.emit('ERROR', { type: 'ERROR', message: 'Please set nickname first' } as ServerMessage);
@@ -416,6 +442,47 @@ io.on('connection', (socket) => {
       return;
     }
     
+    // Check if this is a match the player is rejoining (current match they're leaving)
+    const leavingMatchId = leavingPlayers.get(currentPlayerId);
+    if (leavingMatchId === message.lobbyId) {
+      // Player is rejoining their current match
+      const game = activeGames.get(message.lobbyId);
+      if (game) {
+        // Cancel leave timer
+        const leaveTimer = playerLeaveTimers.get(currentPlayerId);
+        if (leaveTimer) {
+          clearTimeout(leaveTimer);
+          playerLeaveTimers.delete(currentPlayerId);
+        }
+        
+        // Remove from leaving players
+        leavingPlayers.delete(currentPlayerId);
+        
+        // Rejoin match room
+        socket.join(`match:${message.lobbyId}`);
+        
+        // Determine player color and opponent info
+        const yourColor = currentPlayerId === game.playerRed ? 'red' : 'black';
+        const opponentId = yourColor === 'red' ? game.playerBlack : game.playerRed;
+        const opponentNickname = playerNicknames.get(opponentId) || 'Opponent';
+        
+        // Send game state back to player
+        socket.emit('GAME_START', {
+          type: 'GAME_START',
+          matchId: message.lobbyId,
+          yourColor,
+          board: game.board,
+          opponentNickname,
+          nextTurn: game.currentTurn,
+        } as ServerMessage);
+        
+        // Update lobby list
+        broadcastLobbyList(currentPlayerId);
+        return;
+      }
+    }
+    
+    // Normal lobby join logic
     const lobby = lobbies.get(message.lobbyId);
     if (!lobby) {
       socket.emit('ERROR', { type: 'ERROR', message: 'Lobby not found' } as ServerMessage);
@@ -653,23 +720,108 @@ io.on('connection', (socket) => {
     io.to(`match:${message.matchId}`).emit('CHAT_MESSAGE', chatMessage);
   });
   
-  // Leave match
+  // Leave match - 30 second grace period
   socket.on('LEAVE_MATCH', (message: ClientMessage) => {
     if (!currentPlayerId || !message.matchId) return;
     
     const game = activeGames.get(message.matchId);
-    if (game) {
-      activeGames.delete(message.matchId);
-      playerToGame.delete(game.playerRed);
-      playerToGame.delete(game.playerBlack);
+    if (!game) return;
+    
+    // Check if player is already in leaving state
+    if (leavingPlayers.has(currentPlayerId)) {
+      // Cancel existing leave timer
+      const existingTimer = playerLeaveTimers.get(currentPlayerId);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+        playerLeaveTimers.delete(currentPlayerId);
+      }
     }
     
+    // Mark player as leaving
+    leavingPlayers.set(currentPlayerId, message.matchId);
+    
+    // Start 30-second timer
+    const leaveTimer = setTimeout(() => {
+      // Actually leave the match after 30 seconds
+      const gameToLeave = activeGames.get(message.matchId);
+      if (gameToLeave) {
+        activeGames.delete(message.matchId);
+        playerToGame.delete(gameToLeave.playerRed);
+        playerToGame.delete(gameToLeave.playerBlack);
+      }
+      
+      socket.leave(`match:${message.matchId}`);
+      
+      io.to(`match:${message.matchId}`).emit('MATCH_ENDED', {
+        type: 'MATCH_ENDED',
+        message: 'Opponent left the match',
+      } as ServerMessage);
+      
+      // Cleanup
+      leavingPlayers.delete(currentPlayerId);
+      playerLeaveTimers.delete(currentPlayerId);
+      
+      // Update lobby list for the leaving player
+      broadcastLobbyList(currentPlayerId);
+    }, 30000); // 30 seconds
+    
+    playerLeaveTimers.set(currentPlayerId, leaveTimer);
+    
+    // Leave the match room temporarily (but keep game active)
     socket.leave(`match:${message.matchId}`);
     
-    io.to(`match:${message.matchId}`).emit('MATCH_ENDED', {
-      type: 'MATCH_ENDED',
-      message: 'Opponent left the match',
+    // Notify player they have 30 seconds to rejoin
+    socket.emit('MATCH_LEAVING', {
+      type: 'MATCH_LEAVING',
+      matchId: message.matchId,
+      message: 'You have 30 seconds to rejoin your match',
+      timeRemaining: 30,
     } as ServerMessage);
+    
+    // Update lobby list to show current match
+    broadcastLobbyList(currentPlayerId);
+  });
+  
+  // Rejoin match (cancel leave)
+  socket.on('REJOIN_MATCH', (message: ClientMessage) => {
+    if (!currentPlayerId || !message.matchId) return;
+    
+    const game = activeGames.get(message.matchId);
+    if (!game) return;
+    
+    // Check if player is in leaving state for this match
+    if (leavingPlayers.get(currentPlayerId) === message.matchId) {
+      // Cancel leave timer
+      const leaveTimer = playerLeaveTimers.get(currentPlayerId);
+      if (leaveTimer) {
+        clearTimeout(leaveTimer);
+        playerLeaveTimers.delete(currentPlayerId);
+      }
+      
+      // Remove from leaving players
+      leavingPlayers.delete(currentPlayerId);
+      
+      // Rejoin match room
+      socket.join(`match:${message.matchId}`);
+      
+      // Determine player color and opponent info
+      const yourColor = currentPlayerId === game.playerRed ? 'red' : 'black';
+      const opponentId = yourColor === 'red' ? game.playerBlack : game.playerRed;
+      const opponentNickname = playerNicknames.get(opponentId) || 'Opponent';
+      
+      // Send game state back to player
+      socket.emit('GAME_START', {
+        type: 'GAME_START',
+        matchId: message.matchId,
+        yourColor,
+        board: game.board,
+        opponentNickname,
+        nextTurn: game.currentTurn,
+      } as ServerMessage);
+      
+      // Update lobby list
+      broadcastLobbyList(currentPlayerId);
+    }
   });
   
   socket.on('disconnect', (reason) => {
