@@ -342,18 +342,22 @@ io.on('connection', (socket) => {
   
   // Make a move
   socket.on('MOVE', async (message: ClientMessage) => {
+    console.log(`MOVE received from ${currentPlayerId}:`, message);
     if (!currentPlayerId) {
+      console.log('MOVE rejected: Not authenticated');
       socket.emit('MOVE_REJECTED', { type: 'MOVE_REJECTED', reason: 'Not authenticated' } as ServerMessage);
       return;
     }
     
     if (message.from === undefined || message.to === undefined || !message.matchId) {
+      console.log('MOVE rejected: Invalid move data');
       socket.emit('MOVE_REJECTED', { type: 'MOVE_REJECTED', reason: 'Invalid move data' } as ServerMessage);
       return;
     }
     
     const game = activeGames.get(message.matchId);
     if (!game) {
+      console.log('MOVE rejected: Game not found');
       socket.emit('MOVE_REJECTED', { type: 'MOVE_REJECTED', reason: 'Game not found' } as ServerMessage);
       return;
     }
@@ -361,6 +365,7 @@ io.on('connection', (socket) => {
     // Check if it's player's turn
     const playerColor = currentPlayerId === game.playerRed ? 'red' : 'black';
     if (playerColor !== game.currentTurn) {
+      console.log(`MOVE rejected: Not player's turn. Player: ${playerColor}, Current turn: ${game.currentTurn}`);
       socket.emit('MOVE_REJECTED', { type: 'MOVE_REJECTED', reason: 'Not your turn' } as ServerMessage);
       return;
     }
@@ -376,9 +381,12 @@ io.on('connection', (socket) => {
     );
     
     if (!validation.valid) {
+      console.log('MOVE rejected: Invalid move -', validation.reason);
       socket.emit('MOVE_REJECTED', { type: 'MOVE_REJECTED', reason: validation.reason || 'Invalid move' } as ServerMessage);
       return;
     }
+    
+    console.log('MOVE validated, applying move...');
     
     // Apply move
     const result = applyMove(game.board, message.from, message.to, game.currentTurn);
@@ -437,7 +445,7 @@ io.on('connection', (socket) => {
       }, 60000); // Clean up after 1 minute
     } else {
       // Broadcast move
-      io.to(`match:${message.matchId}`).emit('MOVE_ACCEPTED', {
+      const moveAcceptedMessage = {
         type: 'MOVE_ACCEPTED',
         board: game.board,
         nextTurn: game.currentTurn,
@@ -445,7 +453,11 @@ io.on('connection', (socket) => {
         to: message.to,
         canContinueJump: game.canContinueJump,
         continueJumpFrom: game.continueJumpFrom,
-      } as ServerMessage);
+      } as ServerMessage;
+      console.log(`Broadcasting MOVE_ACCEPTED to match:${message.matchId}`, moveAcceptedMessage);
+      // Emit to both the match room and directly to the socket to ensure delivery
+      io.to(`match:${message.matchId}`).emit('MOVE_ACCEPTED', moveAcceptedMessage);
+      socket.emit('MOVE_ACCEPTED', moveAcceptedMessage);
     }
   });
   

@@ -75,6 +75,7 @@ class CheckersWebSocketService {
 
       messageTypes.forEach((type) => {
         this.socket?.on(type, (data: any) => {
+          console.log('Received server message:', type, data);
           this.emit(type, { type, ...data } as ServerMessage);
         });
       });
@@ -126,6 +127,7 @@ class CheckersWebSocketService {
       return;
     }
 
+    console.log('Sending message:', message.type, message);
     this.socket.emit(message.type, message);
   }
 
@@ -151,6 +153,11 @@ class CheckersWebSocketService {
   }
 
   makeMove(matchId: string, from: number, to: number): void {
+    console.log('makeMove called:', { matchId, from, to, connected: this.socket?.connected });
+    if (!this.socket?.connected) {
+      console.error('Cannot make move - socket not connected');
+      return;
+    }
     this.send({ type: 'MOVE', matchId, from, to });
   }
 

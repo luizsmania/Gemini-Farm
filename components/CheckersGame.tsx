@@ -34,7 +34,9 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
 
   useEffect(() => {
     const handleMoveAccepted = (message: ServerMessage) => {
+      console.log('handleMoveAccepted called with:', message);
       if (message.type === 'MOVE_ACCEPTED' && message.board) {
+        console.log('Updating board with new state:', message.board);
         setBoard(message.board);
         if (message.nextTurn) {
           setCurrentTurn(message.nextTurn);
@@ -48,11 +50,15 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         setSelectedSquare(null);
         setLegalMoves([]);
         setError(null);
+      } else {
+        console.log('MOVE_ACCEPTED message missing board:', message);
       }
     };
 
     const handleMoveRejected = (message: ServerMessage) => {
+      console.log('handleMoveRejected called with:', message);
       if (message.type === 'MOVE_REJECTED' && message.reason) {
+        console.error('Move rejected:', message.reason);
         setError(message.reason);
         setSelectedSquare(null);
         setLegalMoves([]);
@@ -264,9 +270,17 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         console.log('Attempting move - Selected:', selectedSquare, 'Target:', index, 'Legal moves:', legalMoves);
         if (legalMoves.length > 0 && legalMoves.includes(index)) {
           console.log('Making move from', selectedSquare, 'to', index);
+          console.log('Socket connected?', checkersWebSocketService.isConnected());
           checkersWebSocketService.makeMove(matchId, selectedSquare, index);
           setError(null);
           // Don't clear selection yet - wait for server response
+          // Set a timeout to show error if no response
+          setTimeout(() => {
+            if (selectedSquare === selectedSquare) { // Still selected after 3 seconds
+              console.warn('No response from server after 3 seconds');
+              setError('No response from server. Check connection.');
+            }
+          }, 3000);
         } else if (legalMoves.length === 0) {
           console.log('No legal moves available');
           setError('No legal moves available. Select a different piece.');
