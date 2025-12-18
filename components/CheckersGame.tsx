@@ -160,7 +160,8 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
 
   const getSquareColor = (index: number, isSelected: boolean, isLegalMove: boolean, isMandatoryCapture: boolean): string => {
     if (isSelected) return 'bg-yellow-500/50';
-    if (isMandatoryCapture) return 'bg-blue-500/50';
+    // Mandatory captures should show even if it's also a legal move for selected piece
+    if (isMandatoryCapture) return 'bg-blue-500/60 border-2 border-blue-400';
     if (isLegalMove) return 'bg-green-500/30';
     const { row, col } = indexToPos(index);
     return isDarkSquare(row, col) ? 'bg-amber-900' : 'bg-amber-50';
@@ -327,6 +328,8 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   const calculateAllMandatoryCaptures = useCallback((): number[] => {
     const allCaptures: number[] = [];
     
+    // First, check if any piece has captures available
+    let hasAnyCaptures = false;
     for (let i = 0; i < BOARD_SIZE * BOARD_SIZE; i++) {
       const piece = board[i];
       if (piece === null) continue;
@@ -334,24 +337,27 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       const pieceColor = (piece === 'r' || piece === 'R') ? 'red' : 'black';
       if (pieceColor !== currentTurn) continue;
       
-      const captures = calculateLegalMoves(i);
-      // If calculateLegalMoves returns captures (mandatory), add them
-      if (captures.length > 0) {
+      const moves = calculateLegalMoves(i);
+      // If calculateLegalMoves returns captures (mandatory), it means this piece has captures
+      if (moves.length > 0) {
         // Check if these are captures by verifying they're 2+ squares away
         const { row: fromRow, col: fromCol } = indexToPos(i);
-        for (const captureIndex of captures) {
-          const { row: toRow, col: toCol } = indexToPos(captureIndex);
+        for (const moveIndex of moves) {
+          const { row: toRow, col: toCol } = indexToPos(moveIndex);
           const rowDiff = Math.abs(toRow - fromRow);
           const colDiff = Math.abs(toCol - fromCol);
           // Captures are at least 2 squares away
           if (rowDiff >= 2 && colDiff >= 2) {
-            allCaptures.push(captureIndex);
+            hasAnyCaptures = true;
+            allCaptures.push(moveIndex);
           }
         }
       }
     }
     
-    return allCaptures;
+    // If there are any captures, return all capture destinations
+    // Otherwise return empty (no mandatory captures)
+    return hasAnyCaptures ? allCaptures : [];
   }, [board, currentTurn, calculateLegalMoves]);
 
   const handleSquareClick = useCallback((index: number) => {
@@ -456,8 +462,9 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         } else {
           // Check if captures are mandatory
           const allMandatoryCaptures = calculateAllMandatoryCaptures();
+          console.log('Checking mandatory captures:', allMandatoryCaptures);
           if (allMandatoryCaptures.length > 0) {
-            console.log('Invalid move - captures are mandatory');
+            console.log('Invalid move - captures are mandatory. Showing', allMandatoryCaptures.length, 'mandatory captures');
             setError('Capture is mandatory! Highlighted moves in blue must be made.');
             setMandatoryCaptures(allMandatoryCaptures);
             // Clear error after 5 seconds
@@ -471,6 +478,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           } else {
             console.log('Invalid move - not in legal moves list');
             setError(`Invalid move - select a highlighted square. Legal moves: ${legalMoves.join(', ')}`);
+            setMandatoryCaptures([]);
             // Clear error after 3 seconds
             if (errorTimeoutRef.current) {
               clearTimeout(errorTimeoutRef.current);
@@ -501,6 +509,10 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     const isSelected = selectedSquare === index;
     const isLegalMove = legalMoves.includes(index);
     const isMandatoryCapture = mandatoryCaptures.includes(index);
+    // Debug log for mandatory captures
+    if (isMandatoryCapture) {
+      console.log('Rendering mandatory capture at index:', index, 'mandatoryCaptures:', mandatoryCaptures);
+    }
     const colorClass = getSquareColor(index, isSelected, isLegalMove, isMandatoryCapture);
 
     return (
@@ -513,7 +525,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           handleSquareClick(index);
         }}
         className={`${colorClass} aspect-square flex items-center justify-center cursor-pointer transition-all hover:scale-105 border-2 ${
-          isSelected ? 'border-yellow-400' : 'border-transparent'
+          isSelected ? 'border-yellow-400' : isMandatoryCapture ? 'border-blue-400' : 'border-transparent'
         }`}
         style={{ position: 'relative', zIndex: 1, minHeight: '60px', minWidth: '60px' }}
       >
