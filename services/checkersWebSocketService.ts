@@ -7,7 +7,20 @@ class CheckersWebSocketService {
   private wsUrl: string;
 
   constructor() {
-    this.wsUrl = import.meta.env.VITE_WS_URL || 'http://localhost:3001';
+    const envUrl = import.meta.env.VITE_WS_URL;
+    
+    if (!envUrl) {
+      console.warn('VITE_WS_URL is not set. Using localhost for development.');
+      this.wsUrl = 'http://localhost:3001';
+    } else {
+      // Socket.IO expects HTTP/HTTPS URL, not wss://
+      // Convert wss:// to https:// and ws:// to http://
+      this.wsUrl = envUrl
+        .replace(/^wss:\/\//, 'https://')
+        .replace(/^ws:\/\//, 'http://');
+      
+      console.log('Connecting to WebSocket server at:', this.wsUrl);
+    }
   }
 
   connect(): Promise<void> {
@@ -25,13 +38,20 @@ class CheckersWebSocketService {
         timeout: 5000,
       });
 
+      let timeoutId: NodeJS.Timeout | null = null;
+      
       this.socket.on('connect', () => {
         console.log('WebSocket connected');
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
         resolve();
       });
 
       this.socket.on('connect_error', (error) => {
         console.error('WebSocket connection error:', error);
+        console.error('Attempted URL:', this.wsUrl);
+        console.error('VITE_WS_URL from env:', import.meta.env.VITE_WS_URL);
         reject(error);
       });
 
@@ -60,9 +80,11 @@ class CheckersWebSocketService {
       });
 
       // Timeout if connection takes too long
-      setTimeout(() => {
+      timeoutId = setTimeout(() => {
         if (!this.socket?.connected) {
-          reject(new Error('Connection timeout'));
+          const error = new Error(`Connection timeout after 10s. Server URL: ${this.wsUrl}. Check that VITE_WS_URL is set correctly in Vercel.`);
+          console.error(error.message);
+          reject(error);
         }
       }, 10000);
     });

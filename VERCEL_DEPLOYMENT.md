@@ -77,9 +77,13 @@ Railway is recommended because it's free to start and easy to set up.
 
 6. **Update Vercel Environment Variables**
    - Go back to Vercel → Settings → Environment Variables
-   - Update `VITE_WS_URL` to: `wss://your-app.up.railway.app`
-   - Make sure to use `wss://` (secure WebSocket) not `ws://`
-   - Add it for **Production**, **Preview**, and **Development** environments
+   - **If `VITE_WS_URL` already exists**: Click on it to edit the existing variable
+   - **If `VITE_WS_URL` doesn't exist**: Click "Add New" to create it
+   - Set the value to: `wss://your-app.up.railway.app` (or `https://your-app.up.railway.app` - both work)
+   - Make sure to use `wss://` or `https://` (secure) not `ws://` or `http://`
+   - Ensure it's enabled for **Production**, **Preview**, and **Development** environments
+   - **Note**: If you see an error "variable already exists", it means the variable is already there - just edit it instead of trying to add a new one
+   - **Important**: The code automatically converts `wss://` to `https://` for Socket.IO compatibility
 
 7. **Redeploy Vercel**
    - After setting `VITE_WS_URL`, go to Deployments
@@ -160,11 +164,34 @@ PORT=3000 (auto-set by Railway/Render)
 
 ## Troubleshooting
 
-### "Failed to connect to server"
-- Check that Railway/Render service is running
-- Verify `VITE_WS_URL` is set correctly in Vercel
-- Make sure you're using `wss://` not `ws://`
-- Check Railway/Render logs for errors
+### "Failed to connect to server" or "Server did not respond"
+- **Check Railway/Render service is running**
+  - Go to Railway/Render dashboard
+  - Verify the service shows as "Active" or "Running"
+  - Check logs for any startup errors
+  
+- **Verify `VITE_WS_URL` is set correctly in Vercel**
+  - Go to Vercel → Settings → Environment Variables
+  - Check that `VITE_WS_URL` exists and has the correct value
+  - Format should be: `wss://your-app.up.railway.app` or `https://your-app.up.railway.app` (both work - code converts automatically)
+  - Make sure it's enabled for **Production**, **Preview**, and **Development**
+  - **Important**: After adding/updating the variable, you MUST redeploy Vercel for changes to take effect
+  
+- **Verify the WebSocket server URL is correct**
+  - Test the server health endpoint: `https://your-app.up.railway.app/health`
+  - Should return JSON with `{"status":"ok"}`
+  - If this fails, the server isn't running or the URL is wrong
+  
+- **Check browser console for detailed errors**
+  - Open browser DevTools (F12) → Console tab
+  - Look for connection errors with the attempted URL
+  - The error message will show what URL it's trying to connect to
+  
+- **Common issues:**
+  - URL has `http://` instead of `https://` or `wss://` (should use secure protocol)
+  - Missing environment variable (check Vercel settings)
+  - Server not deployed yet (deploy to Railway/Render first)
+  - CORS error (check `CLIENT_URL` in Railway matches your Vercel URL exactly)
 
 ### "CORS error"
 - Verify `CLIENT_URL` in Railway matches your Vercel URL exactly
@@ -175,6 +202,16 @@ PORT=3000 (auto-set by Railway/Render)
 - Verify `POSTGRES_URL` is set in Railway/Render
 - Check that Vercel Postgres is running
 - Check Railway/Render logs for database connection errors
+
+### "Variable already exists" error when adding `VITE_WS_URL`
+- This means `VITE_WS_URL` is already configured in Vercel
+- **Solution**: Don't try to add it again - instead:
+  1. Go to Vercel → Settings → Environment Variables
+  2. Find the existing `VITE_WS_URL` variable in the list
+  3. Click on it to edit
+  4. Update the value to your WebSocket URL
+  5. Make sure it's enabled for all environments (Production, Preview, Development)
+  6. Save the changes
 
 ### Players can't see each other's lobbies
 - Make sure both users are accessing the same Vercel URL

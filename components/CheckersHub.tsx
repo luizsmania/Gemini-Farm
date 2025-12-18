@@ -87,7 +87,8 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
       // The nickname will be set when we receive NICKNAME_SET message
       // If no response after 5 seconds, show error
       timeoutRef.current = setTimeout(() => {
-        setError('Server did not respond. Make sure the WebSocket server is running (npm run server).');
+        const wsUrl = import.meta.env.VITE_WS_URL || 'not set';
+        setError(`Server did not respond. Check: 1) VITE_WS_URL is set in Vercel (currently: ${wsUrl}), 2) WebSocket server is running on Railway/Render, 3) Server URL is correct.`);
         setLoading(false);
         timeoutRef.current = null;
       }, 5000);
@@ -97,7 +98,8 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
         timeoutRef.current = null;
       }
       const errorMsg = error.message || 'Failed to connect to server';
-      setError(`Connection failed: ${errorMsg}. Run "npm run server" to start the WebSocket server.`);
+      const wsUrl = import.meta.env.VITE_WS_URL || 'not set';
+      setError(`Connection failed: ${errorMsg}. Check VITE_WS_URL in Vercel (currently: ${wsUrl}) and ensure the WebSocket server is running.`);
       setLoading(false);
     }
   };
