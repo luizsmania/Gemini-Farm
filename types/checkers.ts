@@ -64,6 +64,7 @@ export interface LobbyInfo {
   maxPlayers: number;
   creatorNickname?: string; // Nickname of the player who created the lobby
   isCurrentMatch?: boolean; // True if this is the player's current match they're leaving
+  isYourLobby?: boolean; // True if this lobby was created by the current player
 }
 
 export interface MatchHistory {

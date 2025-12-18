@@ -76,11 +76,13 @@ function broadcastLobbyList(playerId?: string) {
     .filter(lobby => lobby.players.length < lobby.maxPlayers)
     .map(lobby => {
       const creatorNickname = lobby.creatorId ? (playerNicknames.get(lobby.creatorId) || 'Unknown') : 'Unknown';
+      const isYourLobby = playerId ? (lobby.creatorId === playerId) : false;
       return {
         id: lobby.id,
         playerCount: lobby.players.length,
         maxPlayers: lobby.maxPlayers,
         creatorNickname,
+        isYourLobby,
       };
     });
   
@@ -98,6 +100,7 @@ function broadcastLobbyList(playerId?: string) {
           maxPlayers: 2,
           creatorNickname: opponentNickname,
           isCurrentMatch: true, // Flag to show "Current Match" label
+          isYourLobby: false,
         });
       }
     }
@@ -107,7 +110,13 @@ function broadcastLobbyList(playerId?: string) {
   if (playerId) {
     io.to(`player:${playerId}`).emit('LOBBY_LIST', { type: 'LOBBY_LIST', lobbies: lobbyList } as ServerMessage);
   } else {
-    io.emit('LOBBY_LIST', { type: 'LOBBY_LIST', lobbies: lobbyList } as ServerMessage);
+    // When broadcasting to all, we need to send personalized lists to each player
+    // For now, we'll send without isYourLobby flag when broadcasting to all
+    const generalList = lobbyList.map(lobby => ({
+      ...lobby,
+      isYourLobby: false, // Don't mark as "your lobby" when broadcasting to all
+    }));
+    io.emit('LOBBY_LIST', { type: 'LOBBY_LIST', lobbies: generalList } as ServerMessage);
   }
 }
 

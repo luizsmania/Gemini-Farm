@@ -253,6 +253,8 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
                   className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 p-3 sm:p-4 rounded-lg hover:bg-slate-700 transition-colors ${
                     lobby.isCurrentMatch 
                       ? 'bg-orange-500/20 border-2 border-orange-500/50' 
+                      : lobby.isYourLobby
+                      ? 'bg-purple-500/20 border-2 border-purple-500/50'
                       : 'bg-slate-700/50'
                   }`}
                 >
@@ -261,6 +263,8 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
                       <div className="text-white font-semibold text-sm sm:text-base">
                         {lobby.isCurrentMatch ? (
                           <span className="text-orange-400">Current Match</span>
+                        ) : lobby.isYourLobby ? (
+                          <span className="text-purple-400">Your lobby</span>
                         ) : (
                           <>Lobby with {lobby.creatorNickname || 'Unknown'} - {lobby.id.slice(-8)}</>
                         )}
@@ -268,6 +272,11 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
                       {lobby.isCurrentMatch && (
                         <span className="text-[10px] sm:text-xs text-orange-400 bg-orange-400/20 px-1.5 py-0.5 rounded">
                           Rejoin
+                        </span>
+                      )}
+                      {lobby.isYourLobby && (
+                        <span className="text-[10px] sm:text-xs text-purple-400 bg-purple-400/20 px-1.5 py-0.5 rounded">
+                          Created by you
                         </span>
                       )}
                     </div>
