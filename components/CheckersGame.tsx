@@ -107,10 +107,10 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
 
     const handleGameStart = (message: ServerMessage) => {
       if (message.type === 'GAME_START' && message.matchId && message.board) {
-        // Rematch - reset game state
+        // Rematch or reconnection - reset/update game state
         setMatchId(message.matchId);
         setBoard(message.board);
-        setCurrentTurn('red');
+        setCurrentTurn(message.nextTurn || 'red'); // Use current turn from server
         setSelectedSquare(null);
         setLegalMoves([]);
         setWinner(null);
@@ -118,7 +118,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         setContinueJumpFrom(null);
         setError(null);
         setShowRematch(false);
-        setChatMessages([]); // Clear chat on rematch
+        setChatMessages([]); // Clear chat on rematch/reconnection
         if (message.opponentNickname) {
           setOpponentNickname(message.opponentNickname);
         }
@@ -556,7 +556,12 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
 
   // Auto-scroll chat to bottom when new messages arrive
   useEffect(() => {
-    chatMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (chatMessagesEndRef.current) {
+      // Use setTimeout to ensure DOM is updated
+      setTimeout(() => {
+        chatMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 0);
+    }
   }, [chatMessages]);
 
   const renderSquare = (displayIndex: number) => {
@@ -726,8 +731,10 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
                 )}
               </div>
 
-              {/* Chat Messages - Scrollable */}
-              <div className="bg-slate-900 rounded-lg p-1.5 sm:p-2 mb-2 flex-1 overflow-y-auto min-h-0">
+              {/* Chat Messages - Scrollable with fixed height */}
+              <div 
+                className="bg-slate-900 rounded-lg p-1.5 sm:p-2 mb-2 overflow-y-auto flex-shrink-0 h-[120px] lg:h-[200px]"
+              >
                 {chatMessages.length === 0 ? (
                   <p className="text-[10px] sm:text-xs text-slate-400 text-center py-4">No messages yet. Start chatting!</p>
                 ) : (

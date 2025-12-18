@@ -37,7 +37,8 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
       if (!checkersWebSocketService.isConnected()) {
         await checkersWebSocketService.connect();
       }
-      await checkersWebSocketService.setNickname(nick.trim());
+      // Pass existing playerId for reconnection if available
+      await checkersWebSocketService.setNickname(nick.trim(), playerId);
       // The nickname will be set when we receive NICKNAME_SET message
       // If no response after 5 seconds, show error
       timeoutRef.current = setTimeout(() => {

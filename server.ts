@@ -256,19 +256,99 @@ io.on('connection', (socket) => {
       
       const nickname = message.nickname.trim();
       
-      // Create player in database (or get existing if needed)
-      // For simplicity, we'll create a new player entry each time
-      // In production, you might want to check for existing players by nickname
-      let player;
-      try {
-        player = await createPlayer(nickname);
-        currentPlayerId = player.id;
-      } catch (dbError: any) {
-        console.error('Database error creating player:', dbError);
-        // If database fails, use a temporary ID based on socket ID and nickname
-        // This allows the game to work even if database is down
-        currentPlayerId = `temp_${socket.id}_${Date.now()}`;
-        console.warn(`Using temporary player ID: ${currentPlayerId}`);
+      // Check if player provided an existing playerId (for reconnection after page refresh)
+      let existingPlayerId: string | null = null;
+      if (message.playerId && typeof message.playerId === 'string') {
+        // First check if this playerId is in an active game
+        const matchId = playerToGame.get(message.playerId);
+        if (matchId) {
+          const game = activeGames.get(matchId);
+          if (game && game.winner === null) {
+            // Player is reconnecting to an active game
+            existingPlayerId = message.playerId;
+            console.log(`Player reconnecting with existing playerId: ${existingPlayerId} to match: ${matchId}`);
+            
+            // Cancel disconnect timer if it exists
+            handleReconnect(existingPlayerId);
+            
+            // Rejoin match room
+            socket.join(`match:${matchId}`);
+            
+            // Update nickname mapping
+            playerNicknames.set(existingPlayerId, nickname);
+            
+            // Determine player color
+            const yourColor = existingPlayerId === game.playerRed ? 'red' : 'black';
+            const opponentId = yourColor === 'red' ? game.playerBlack : game.playerRed;
+            const opponentNickname = playerNicknames.get(opponentId) || 'Opponent';
+            
+            currentPlayerId = existingPlayerId;
+            currentNickname = nickname;
+            
+            // Join player-specific room
+            socket.join(`player:${currentPlayerId}`);
+            
+            console.log(`Player ${currentNickname} (${currentPlayerId}) reconnected to match ${matchId}`);
+            
+            // Send player ID back to client
+            socket.emit('NICKNAME_SET', {
+              type: 'NICKNAME_SET',
+              playerId: currentPlayerId,
+              nickname: currentNickname,
+            });
+            
+            // Send current game state to reconnecting player
+            socket.emit('GAME_START', {
+              type: 'GAME_START',
+              matchId,
+              yourColor,
+              board: game.board,
+              opponentNickname,
+              nextTurn: game.currentTurn, // Include current turn
+            } as ServerMessage);
+            
+            // Notify other player
+            io.to(`player:${opponentId}`).emit('PLAYER_DISCONNECTED', {
+              type: 'PLAYER_DISCONNECTED',
+              message: 'Opponent reconnected.',
+            } as ServerMessage);
+            
+            // Send lobby list
+            broadcastLobbyList();
+            return;
+          }
+        }
+        
+        // If playerId provided but not in active game, verify it exists in database
+        // If it does, reuse it (for consistency)
+        try {
+          const { getPlayerById } = await import('./api/database.js');
+          const existingPlayer = await getPlayerById(message.playerId);
+          if (existingPlayer) {
+            existingPlayerId = message.playerId;
+            console.log(`Reusing existing playerId: ${existingPlayerId} for nickname: ${nickname}`);
+          }
+        } catch (dbError: any) {
+          console.log('Could not verify existing playerId, will create new player:', dbError.message);
+        }
+      }
+      
+      // Create new player (first time or not reconnecting to active game)
+      if (!existingPlayerId) {
+        let player;
+        try {
+          player = await createPlayer(nickname);
+          currentPlayerId = player.id;
+        } catch (dbError: any) {
+          console.error('Database error creating player:', dbError);
+          // If database fails, use a temporary ID based on socket ID and nickname
+          // This allows the game to work even if database is down
+          currentPlayerId = `temp_${socket.id}_${Date.now()}`;
+          console.warn(`Using temporary player ID: ${currentPlayerId}`);
+        }
+      } else {
+        // Reusing existing playerId (already set above for reconnection case)
+        currentPlayerId = existingPlayerId;
       }
       
       currentNickname = nickname;

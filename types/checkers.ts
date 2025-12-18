@@ -28,6 +28,7 @@ export interface GameState {
 export interface ClientMessage {
   type: 'SET_NICKNAME' | 'CREATE_LOBBY' | 'JOIN_LOBBY' | 'MOVE' | 'REMATCH_ACCEPT' | 'LEAVE_MATCH' | 'CHAT_MESSAGE';
   nickname?: string;
+  playerId?: string; // For reconnection
   lobbyId?: string;
   from?: number;
   to?: number;

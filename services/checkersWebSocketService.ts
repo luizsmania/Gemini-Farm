@@ -141,7 +141,7 @@ class CheckersWebSocketService {
     this.socket.emit(message.type, message);
   }
 
-  async setNickname(nickname: string): Promise<void> {
+  async setNickname(nickname: string, existingPlayerId?: string): Promise<void> {
     // Ensure we're connected before sending
     if (!this.socket?.connected) {
       try {
@@ -151,7 +151,7 @@ class CheckersWebSocketService {
         throw error;
       }
     }
-    this.send({ type: 'SET_NICKNAME', nickname });
+    this.send({ type: 'SET_NICKNAME', nickname, playerId: existingPlayerId });
   }
 
   createLobby(): void {
