@@ -23,6 +23,13 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const autoSetRef = useRef(false);
 
+  // Sync local nickname state with prop changes (e.g., on page refresh)
+  useEffect(() => {
+    if (propNickname && propNickname !== nickname) {
+      setNickname(propNickname);
+    }
+  }, [propNickname, nickname]);
+
   const handleSetNicknameAuto = async (nick: string) => {
     // Clear any existing timeout
     if (timeoutRef.current) {
@@ -95,6 +102,7 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
         }
         setLoading(false);
         setNicknameSet(true);
+        setNickname(message.nickname); // Update local state
         onNicknameSet(message.nickname, message.playerId);
       }
     };
@@ -200,7 +208,7 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
               <h1 className="text-2xl sm:text-3xl font-bold mb-1 sm:mb-2 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
                 Online Checkers
               </h1>
-              <p className="text-sm sm:text-base text-slate-400">Welcome, <span className="text-purple-400 font-semibold">{nickname}</span>!</p>
+              <p className="text-sm sm:text-base text-slate-400">Welcome, <span className="text-purple-400 font-semibold">{propNickname || nickname || 'Player'}</span>!</p>
             </div>
             {onLogout && (
               <Button onClick={onLogout} variant="danger" size="sm" className="self-end sm:self-auto">

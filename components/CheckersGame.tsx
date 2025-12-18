@@ -636,7 +636,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
               </div>
 
               {/* Opponent Info (Top) */}
-              <div className="flex items-center gap-1.5 sm:gap-2 mb-1 sm:mb-2 flex-shrink-0">
+              <div className="flex items-center gap-1.5 sm:gap-2 mb-0.5 sm:mb-2 flex-shrink-0">
                 <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-slate-700 flex items-center justify-center text-sm sm:text-base flex-shrink-0">
                   {opponentColor === 'red' ? '🔴' : '⚫'}
                 </div>
@@ -731,9 +731,9 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
                 )}
               </div>
 
-              {/* Chat Messages - Scrollable with fixed height */}
+              {/* Chat Messages - Scrollable, fills available space on desktop, fixed larger height on mobile */}
               <div 
-                className="bg-slate-900 rounded-lg p-1.5 sm:p-2 mb-2 overflow-y-auto flex-shrink-0 h-[120px] lg:h-[200px]"
+                className="bg-slate-900 rounded-lg p-1.5 sm:p-2 mb-2 overflow-y-auto flex-shrink-0 h-[180px] lg:flex-1 lg:min-h-0"
               >
                 {chatMessages.length === 0 ? (
                   <p className="text-[10px] sm:text-xs text-slate-400 text-center py-4">No messages yet. Start chatting!</p>
