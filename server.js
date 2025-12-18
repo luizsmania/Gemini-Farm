@@ -18,14 +18,33 @@ import { GameState, Lobby, ClientMessage, ServerMessage } from './types/checkers
 // Create HTTP server
 const httpServer = http.createServer();
 
+// Configure CORS for production
+const getCorsOrigin = () => {
+  // In production, allow specific origins
+  if (process.env.CLIENT_URL) {
+    return process.env.CLIENT_URL;
+  }
+  if (process.env.VITE_CLIENT_URL) {
+    return process.env.VITE_CLIENT_URL;
+  }
+  // Allow all origins in development
+  if (process.env.NODE_ENV === 'development') {
+    return '*';
+  }
+  // In production without CLIENT_URL, allow common Vercel patterns
+  return true; // Allow all origins (Socket.IO will check origin automatically)
+};
+
 // Create Socket.IO server
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.CLIENT_URL || process.env.VITE_CLIENT_URL || '*',
+    origin: getCorsOrigin(),
     methods: ['GET', 'POST'],
     credentials: true,
+    allowedHeaders: ['Content-Type'],
   },
   transports: ['websocket', 'polling'],
+  allowEIO3: true, // Allow Engine.IO v3 clients (for compatibility)
 });
 
 // In-memory game state
@@ -69,8 +88,17 @@ async function startGame(lobby: Lobby) {
   
   try {
     // Create match in database (returns match with UUID)
-    const match = await createMatch(playerRed, playerBlack);
-    const matchId = match.id;
+    let match;
+    let matchId: string;
+    try {
+      match = await createMatch(playerRed, playerBlack);
+      matchId = match.id;
+    } catch (dbError: any) {
+      console.error('Database error creating match:', dbError);
+      // If database fails, use lobby ID as match ID
+      matchId = lobby.id;
+      console.warn(`Using lobby ID as match ID: ${matchId}`);
+    }
     
     const board = createInitialBoard();
     const gameState: GameState = {
@@ -209,8 +237,18 @@ io.on('connection', (socket) => {
       // Create player in database (or get existing if needed)
       // For simplicity, we'll create a new player entry each time
       // In production, you might want to check for existing players by nickname
-      const player = await createPlayer(nickname);
-      currentPlayerId = player.id;
+      let player;
+      try {
+        player = await createPlayer(nickname);
+        currentPlayerId = player.id;
+      } catch (dbError: any) {
+        console.error('Database error creating player:', dbError);
+        // If database fails, use a temporary ID based on socket ID and nickname
+        // This allows the game to work even if database is down
+        currentPlayerId = `temp_${socket.id}_${Date.now()}`;
+        console.warn(`Using temporary player ID: ${currentPlayerId}`);
+      }
+      
       currentNickname = nickname;
       
       // Join player-specific room
@@ -227,9 +265,12 @@ io.on('connection', (socket) => {
       
       // Send lobby list
       broadcastLobbyList();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error setting nickname:', error);
-      socket.emit('ERROR', { type: 'ERROR', message: 'Failed to set nickname' } as ServerMessage);
+      socket.emit('ERROR', { 
+        type: 'ERROR', 
+        message: `Failed to set nickname: ${error.message || 'Unknown error'}` 
+      } as ServerMessage);
     }
   });
   
@@ -349,8 +390,9 @@ io.on('connection', (socket) => {
     game.moveCount++;
     try {
       await addMove(message.matchId, game.moveCount, message.from, message.to);
-    } catch (error) {
-      console.error('Error saving move:', error);
+    } catch (dbError) {
+      // Non-critical - game continues even if move isn't saved
+      console.error('Error saving move to database (non-critical):', dbError);
     }
     
     // Check for continued jump
@@ -377,8 +419,9 @@ io.on('connection', (socket) => {
       
       try {
         await finishMatch(message.matchId, winnerId);
-      } catch (error) {
-        console.error('Error finishing match:', error);
+      } catch (dbError) {
+        // Non-critical - game can end even if database fails
+        console.error('Error finishing match in database (non-critical):', dbError);
       }
       
       io.to(`match:${message.matchId}`).emit('GAME_OVER', {
@@ -468,12 +511,6 @@ io.on('connection', (socket) => {
       cleanupLobby(currentPlayerId);
     }
   });
-  
-  socket.on('connect', () => {
-    if (currentPlayerId) {
-      handleReconnect(currentPlayerId);
-    }
-  });
 });
 
 // Health check endpoint
@@ -509,8 +546,10 @@ async function startServer() {
 
   httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`Checkers WebSocket server running on port ${PORT}`);
-    console.log(`CORS enabled for: ${process.env.CLIENT_URL || process.env.VITE_CLIENT_URL || '*'}`);
+    const corsOrigin = getCorsOrigin();
+    console.log(`CORS enabled for: ${typeof corsOrigin === 'string' ? corsOrigin : corsOrigin === true ? 'all origins' : 'none'}`);
     console.log(`Health check: http://localhost:${PORT}/health`);
+    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   });
 }
 

@@ -106,10 +106,15 @@ POSTGRES_URL=postgresql://... (auto-added by Vercel)
 
 #### WebSocket Server (Railway/Render)
 ```env
-PORT=3001
 CLIENT_URL=https://your-vercel-app.vercel.app
-POSTGRES_URL=postgresql://... (same as frontend)
+POSTGRES_URL=postgresql://... (from Vercel Postgres)
+NODE_ENV=production
+PORT=3000 (auto-set by Railway/Render)
 ```
+
+**Important**: 
+- `CLIENT_URL` must match your Vercel app URL exactly (including `https://`)
+- This allows CORS to work properly so Vercel users can connect
 
 ### Development
 

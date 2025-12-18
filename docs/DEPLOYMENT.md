@@ -54,10 +54,13 @@ This document consolidates all deployment and configuration instructions for the
 
 3. **Environment Variables**
    ```env
-   PORT=3000
-   API_URL=https://your-vercel-app.vercel.app
+   CLIENT_URL=https://your-vercel-app.vercel.app
+   POSTGRES_URL=postgresql://... (from Vercel Postgres)
    NODE_ENV=production
+   PORT=3000 (auto-set by Railway, no need to configure)
    ```
+   
+   **Important**: Set `CLIENT_URL` to your exact Vercel app URL (e.g., `https://your-app.vercel.app`)
 
 4. **Generate Public Domain**
    - Go to Settings → Networking
