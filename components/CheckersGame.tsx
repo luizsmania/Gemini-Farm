@@ -591,9 +591,9 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           const display = getPieceDisplay(piece);
           return (
             <div className="relative flex items-center justify-center pointer-events-none select-none w-full h-full">
-              <span className="text-2xl sm:text-3xl md:text-4xl filter drop-shadow-lg relative z-10">{display.emoji}</span>
+              <span className="text-lg sm:text-xl md:text-2xl lg:text-3xl filter drop-shadow-lg relative z-10">{display.emoji}</span>
               {display.isKing && (
-                <span className="text-lg sm:text-xl md:text-2xl absolute -top-0.5 sm:-top-1 left-1/2 transform -translate-x-1/2 filter drop-shadow-lg z-20">👑</span>
+                <span className="text-sm sm:text-base md:text-lg lg:text-xl absolute -top-0.5 sm:-top-1 left-1/2 transform -translate-x-1/2 filter drop-shadow-lg z-20">👑</span>
               )}
             </div>
           );
@@ -608,37 +608,37 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   const currentPlayerDisplayName = nickname || 'You';
 
   return (
-    <div className="min-h-screen bg-slate-900 p-2 sm:p-4">
-      <div className="max-w-7xl mx-auto">
+    <div className="h-screen bg-slate-900 p-1 sm:p-2 overflow-hidden flex flex-col">
+      <div className="max-w-7xl mx-auto w-full h-full flex flex-col">
         {/* Desktop Layout: Board Left, Chat Right */}
-        <div className="flex flex-col lg:flex-row gap-4">
+        <div className="flex flex-col lg:flex-row gap-2 flex-1 min-h-0 overflow-hidden">
           {/* Left Section: Board Area */}
-          <div className="flex-1 lg:flex-[0_0_65%]">
-            <div className="bg-slate-800 rounded-lg p-3 sm:p-4 lg:p-6">
+          <div className="flex-1 lg:flex-[0_0_65%] min-w-0 flex flex-col">
+            <div className="bg-slate-800 rounded-lg p-2 sm:p-3 lg:p-4 h-full flex flex-col min-h-0">
               {/* Top Bar with Settings */}
-              <div className="flex justify-between items-center mb-3 sm:mb-4">
-                <div className="flex items-center gap-2">
-                  <h2 className="text-lg sm:text-xl font-semibold text-white">Checkers</h2>
+              <div className="flex justify-between items-center mb-1 sm:mb-2 flex-shrink-0">
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                  <h2 className="text-base sm:text-lg font-semibold text-white">Checkers</h2>
                   {canContinueJump && (
-                    <span className="text-xs sm:text-sm text-yellow-400 bg-yellow-400/20 px-2 py-1 rounded">
+                    <span className="text-[10px] sm:text-xs text-yellow-400 bg-yellow-400/20 px-1.5 py-0.5 rounded">
                       Continue jump!
                     </span>
                   )}
                 </div>
-                <Button onClick={handleLeave} variant="danger" size="sm">
-                  <X size={18} className="sm:w-5 sm:h-5" />
+                <Button onClick={handleLeave} variant="danger" size="sm" className="!p-1.5 sm:!p-2">
+                  <X size={16} className="sm:w-4 sm:h-4" />
                 </Button>
               </div>
 
               {/* Opponent Info (Top) */}
-              <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-slate-700 flex items-center justify-center text-lg sm:text-xl">
+              <div className="flex items-center gap-1.5 sm:gap-2 mb-1 sm:mb-2 flex-shrink-0">
+                <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-slate-700 flex items-center justify-center text-sm sm:text-base flex-shrink-0">
                   {opponentColor === 'red' ? '🔴' : '⚫'}
                 </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm sm:text-base font-semibold text-white">{opponentDisplayName}</span>
-                    <span className={`text-xs sm:text-sm px-2 py-0.5 rounded ${
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 sm:gap-2">
+                    <span className="text-xs sm:text-sm font-semibold text-white truncate">{opponentDisplayName}</span>
+                    <span className={`text-[10px] sm:text-xs px-1.5 py-0.5 rounded flex-shrink-0 ${
                       opponentColor === 'red' 
                         ? 'bg-red-500/20 text-red-400' 
                         : 'bg-slate-600 text-slate-300'
@@ -646,32 +646,41 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
                       {opponentColor === 'red' ? 'Red' : 'Black'}
                     </span>
                     {currentTurn === opponentColor && (
-                      <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                      <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-green-500 rounded-full flex-shrink-0"></span>
                     )}
                   </div>
                 </div>
               </div>
 
-              {/* Board */}
-              <div 
-                className="grid grid-cols-8 gap-0 bg-amber-800 p-1 sm:p-2 rounded-lg mb-2 sm:mb-3 w-full mx-auto" 
-                style={{ position: 'relative', zIndex: 0, aspectRatio: '1', maxWidth: '100%' }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                }}
-              >
-                {Array.from({ length: BOARD_SIZE * BOARD_SIZE }, (_, i) => renderSquare(i))}
+              {/* Board - Takes remaining space */}
+              <div className="flex-1 min-h-0 flex items-center justify-center">
+                <div 
+                  className="grid grid-cols-8 gap-0 bg-amber-800 p-0.5 sm:p-1 rounded-lg w-full max-w-full" 
+                  style={{ 
+                    position: 'relative', 
+                    zIndex: 0, 
+                    aspectRatio: '1',
+                    maxHeight: '100%',
+                    width: '100%',
+                    height: 'auto'
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                  }}
+                >
+                  {Array.from({ length: BOARD_SIZE * BOARD_SIZE }, (_, i) => renderSquare(i))}
+                </div>
               </div>
 
               {/* Current Player Info (Bottom) */}
-              <div className="flex items-center gap-2 sm:gap-3 mt-2 sm:mt-3">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-slate-700 flex items-center justify-center text-lg sm:text-xl">
+              <div className="flex items-center gap-1.5 sm:gap-2 mt-1 sm:mt-2 flex-shrink-0">
+                <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-slate-700 flex items-center justify-center text-sm sm:text-base flex-shrink-0">
                   {yourColor === 'red' ? '🔴' : '⚫'}
                 </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm sm:text-base font-semibold text-white">{currentPlayerDisplayName}</span>
-                    <span className={`text-xs sm:text-sm px-2 py-0.5 rounded ${
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 sm:gap-2">
+                    <span className="text-xs sm:text-sm font-semibold text-white truncate">{currentPlayerDisplayName}</span>
+                    <span className={`text-[10px] sm:text-xs px-1.5 py-0.5 rounded flex-shrink-0 ${
                       yourColor === 'red' 
                         ? 'bg-red-500/20 text-red-400' 
                         : 'bg-slate-600 text-slate-300'
@@ -679,60 +688,60 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
                       {yourColor === 'red' ? 'Red' : 'Black'}
                     </span>
                     {currentTurn === yourColor && (
-                      <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                      <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-green-500 rounded-full flex-shrink-0"></span>
                     )}
                   </div>
                 </div>
               </div>
 
-              {/* Winner/Rematch Messages */}
+              {/* Winner/Rematch Messages - Only show if game ended */}
               {winner && (
-                <div className="mt-3 sm:mt-4 p-3 sm:p-4 bg-green-500/20 border border-green-500/50 rounded-lg text-center">
-                  <p className="text-lg sm:text-xl font-bold text-green-400 mb-1">
+                <div className="mt-1.5 sm:mt-2 p-2 sm:p-3 bg-green-500/20 border border-green-500/50 rounded-lg text-center flex-shrink-0">
+                  <p className="text-sm sm:text-base font-bold text-green-400 mb-1">
                     {winner === yourColor ? '🎉 You Win!' : '😔 You Lost'}
                   </p>
-                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 justify-center mt-3">
-                    <Button onClick={handleRematch} className="w-full sm:w-auto">Play Again</Button>
-                    <Button onClick={handleLeave} variant="danger" className="w-full sm:w-auto">Leave</Button>
+                  <div className="flex flex-col sm:flex-row gap-1.5 sm:gap-2 justify-center mt-2">
+                    <Button onClick={handleRematch} size="sm" className="w-full sm:w-auto text-xs sm:text-sm py-1.5">Play Again</Button>
+                    <Button onClick={handleLeave} variant="danger" size="sm" className="w-full sm:w-auto text-xs sm:text-sm py-1.5">Leave</Button>
                   </div>
                 </div>
               )}
 
               {showRematch && !winner && (
-                <div className="mt-3 sm:mt-4 text-center">
-                  <p className="text-white text-sm sm:text-base mb-3">Opponent wants to play again!</p>
-                  <Button onClick={handleRematch} className="w-full sm:w-auto">Accept Rematch</Button>
+                <div className="mt-1.5 sm:mt-2 text-center flex-shrink-0">
+                  <p className="text-white text-xs sm:text-sm mb-2">Opponent wants to play again!</p>
+                  <Button onClick={handleRematch} size="sm" className="w-full sm:w-auto text-xs sm:text-sm py-1.5">Accept Rematch</Button>
                 </div>
               )}
             </div>
           </div>
 
           {/* Right Section: Chat Sidebar */}
-          <div className="lg:flex-[0_0_35%]">
-            <div className="bg-slate-800 rounded-lg p-3 sm:p-4 h-full flex flex-col">
-              <div className="flex items-center justify-between mb-3 sm:mb-4">
-                <h3 className="text-base sm:text-lg font-semibold text-white">Chat</h3>
+          <div className="lg:flex-[0_0_35%] min-w-0 flex flex-col">
+            <div className="bg-slate-800 rounded-lg p-2 sm:p-3 h-full flex flex-col min-h-0">
+              <div className="flex items-center justify-between mb-2 flex-shrink-0">
+                <h3 className="text-sm sm:text-base font-semibold text-white">Chat</h3>
                 {opponentDisconnected && (
-                  <span className="text-xs text-yellow-400">Reconnecting...</span>
+                  <span className="text-[10px] sm:text-xs text-yellow-400">Reconnecting...</span>
                 )}
               </div>
 
-              {/* Chat Messages */}
-              <div className="bg-slate-900 rounded-lg p-2 sm:p-3 mb-3 flex-1 overflow-y-auto min-h-[200px] sm:min-h-[300px] lg:min-h-[400px]">
+              {/* Chat Messages - Scrollable */}
+              <div className="bg-slate-900 rounded-lg p-1.5 sm:p-2 mb-2 flex-1 overflow-y-auto min-h-0">
                 {chatMessages.length === 0 ? (
-                  <p className="text-xs sm:text-sm text-slate-400 text-center py-8">No messages yet. Start chatting!</p>
+                  <p className="text-[10px] sm:text-xs text-slate-400 text-center py-4">No messages yet. Start chatting!</p>
                 ) : (
-                  <div className="space-y-2 sm:space-y-3">
+                  <div className="space-y-1.5 sm:space-y-2">
                     {chatMessages.map((msg, idx) => (
                       <div
                         key={idx}
                         className={`flex flex-col ${msg.isOwn ? 'items-end' : 'items-start'}`}
                       >
-                        <div className={`text-xs text-slate-400 mb-1 ${msg.isOwn ? 'text-right' : 'text-left'}`}>
+                        <div className={`text-[10px] sm:text-xs text-slate-400 mb-0.5 ${msg.isOwn ? 'text-right' : 'text-left'}`}>
                           {msg.senderNickname}
                         </div>
                         <div
-                          className={`max-w-[80%] rounded-lg px-3 py-2 text-sm break-words ${
+                          className={`max-w-[85%] rounded-lg px-2 sm:px-2.5 py-1 sm:py-1.5 text-xs sm:text-sm break-words ${
                             msg.isOwn
                               ? 'bg-purple-600 text-white'
                               : 'bg-slate-700 text-slate-100'
@@ -748,13 +757,13 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
               </div>
 
               {/* Chat Input */}
-              <form onSubmit={handleSendChat} className="flex gap-2">
+              <form onSubmit={handleSendChat} className="flex gap-1.5 sm:gap-2 flex-shrink-0">
                 <input
                   type="text"
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
                   placeholder="Type a message..."
-                  className="flex-1 px-3 py-2 text-sm bg-slate-900 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 touch-manipulation"
+                  className="flex-1 px-2 sm:px-2.5 py-1.5 sm:py-2 text-xs sm:text-sm bg-slate-900 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 touch-manipulation"
                   maxLength={200}
                   autoComplete="off"
                   autoCorrect="off"
@@ -765,7 +774,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
                   type="submit" 
                   size="sm" 
                   disabled={!chatInput.trim()}
-                  className="touch-manipulation"
+                  className="touch-manipulation !px-2 sm:!px-3 !py-1.5 sm:!py-2 text-xs sm:text-sm"
                 >
                   Send
                 </Button>

@@ -59,14 +59,24 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
   };
 
   // Auto-set nickname if it exists from props (loaded from localStorage)
+  // Also handle case where nickname is missing - automatically logout
   useEffect(() => {
+    // If no nickname prop and not set, trigger logout to avoid issues
+    if (!propNickname || propNickname.trim() === '') {
+      if (onLogout && nicknameSet) {
+        // Only logout if we were previously set (to avoid infinite loops)
+        onLogout();
+      }
+      return;
+    }
+    
     if (propNickname && !autoSetRef.current && !nicknameSet) {
       autoSetRef.current = true;
       // Automatically set the nickname on the server
       handleSetNicknameAuto(propNickname);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [propNickname, nicknameSet]);
+  }, [propNickname, nicknameSet, onLogout]);
 
   useEffect(() => {
     const handleLobbyList = (message: ServerMessage) => {

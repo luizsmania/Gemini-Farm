@@ -20,9 +20,22 @@ function App() {
   } | null>(null);
 
   // Load nickname and playerId from localStorage on mount
+  // If no nickname exists, automatically logout to avoid issues
   useEffect(() => {
     const savedNickname = localStorage.getItem(STORAGE_KEY_NICKNAME);
     const savedPlayerId = localStorage.getItem(STORAGE_KEY_PLAYER_ID);
+    
+    // If nickname is missing or empty, clear everything and logout
+    if (!savedNickname || savedNickname.trim() === '') {
+      // Clear any stale data
+      localStorage.removeItem(STORAGE_KEY_NICKNAME);
+      localStorage.removeItem(STORAGE_KEY_PLAYER_ID);
+      setNickname('');
+      setPlayerId('');
+      setGameState(null);
+      setCurrentView('hub');
+      return;
+    }
     
     if (savedNickname) {
       setNickname(savedNickname);

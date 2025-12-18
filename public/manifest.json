@@ -3,10 +3,11 @@
   "short_name": "Checkers",
   "description": "Real-time multiplayer Checkers game",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#111827",
   "theme_color": "#7c3aed",
-  "orientation": "portrait-primary",
+  "orientation": "any",
   "icons": [
     {
       "src": "/icon-192.png",
@@ -15,13 +16,15 @@
       "purpose": "any maskable"
     },
     {
-      "src": "/icon-512.png",
+      "src": "/icon-192.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
     }
   ],
   "categories": ["games", "entertainment"],
-  "screenshots": []
+  "screenshots": [],
+  "prefer_related_applications": false,
+  "shortcuts": []
 }
 
