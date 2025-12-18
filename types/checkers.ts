@@ -61,6 +61,7 @@ export interface LobbyInfo {
   id: string;
   playerCount: number;
   maxPlayers: number;
+  creatorNickname?: string; // Nickname of the player who created the lobby
 }
 
 export interface MatchHistory {

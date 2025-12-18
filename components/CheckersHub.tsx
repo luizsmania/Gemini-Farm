@@ -244,7 +244,9 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
                   className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 p-3 sm:p-4 bg-slate-700/50 rounded-lg hover:bg-slate-700 transition-colors"
                 >
                   <div className="flex-1">
-                    <div className="text-white font-semibold text-sm sm:text-base">Lobby {lobby.id.slice(-8)}</div>
+                    <div className="text-white font-semibold text-sm sm:text-base">
+                      Lobby with {lobby.creatorNickname || 'Unknown'} - {lobby.id.slice(-8)}
+                    </div>
                     <div className="text-slate-400 text-xs sm:text-sm">
                       {lobby.playerCount}/{lobby.maxPlayers} players
                     </div>

@@ -72,11 +72,15 @@ function cleanupLobby(lobbyId: string) {
 function broadcastLobbyList() {
   const lobbyList = Array.from(lobbies.values())
     .filter(lobby => lobby.players.length < lobby.maxPlayers)
-    .map(lobby => ({
-      id: lobby.id,
-      playerCount: lobby.players.length,
-      maxPlayers: lobby.maxPlayers,
-    }));
+    .map(lobby => {
+      const creatorNickname = lobby.creatorId ? (playerNicknames.get(lobby.creatorId) || 'Unknown') : 'Unknown';
+      return {
+        id: lobby.id,
+        playerCount: lobby.players.length,
+        maxPlayers: lobby.maxPlayers,
+        creatorNickname,
+      };
+    });
   
   io.emit('LOBBY_LIST', { type: 'LOBBY_LIST', lobbies: lobbyList } as ServerMessage);
 }
@@ -390,6 +394,7 @@ io.on('connection', (socket) => {
       players: [currentPlayerId],
       maxPlayers: 2,
       createdAt: Date.now(),
+      creatorId: currentPlayerId, // Store creator ID
     };
     
     lobbies.set(lobbyId, lobby);
