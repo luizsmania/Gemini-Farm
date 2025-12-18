@@ -37,6 +37,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   const [showRematch, setShowRematch] = useState(false);
   const [chatMessages, setChatMessages] = useState<Array<{ senderNickname: string; message: string; timestamp: number; isOwn: boolean }>>([]);
   const [chatInput, setChatInput] = useState('');
+  const [opponentNickname, setOpponentNickname] = useState<string>('Opponent');
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
   const moveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const errorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -118,6 +119,9 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         setError(null);
         setShowRematch(false);
         setChatMessages([]); // Clear chat on rematch
+        if (message.opponentNickname) {
+          setOpponentNickname(message.opponentNickname);
+        }
         // Clear any pending timeouts
         if (moveTimeoutRef.current) {
           clearTimeout(moveTimeoutRef.current);
@@ -598,135 +602,185 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     );
   };
 
+  // Determine opponent color
+  const opponentColor = yourColor === 'red' ? 'black' : 'red';
+  const opponentDisplayName = opponentNickname || 'Opponent';
+  const currentPlayerDisplayName = nickname || 'You';
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-2 sm:p-4">
-      <div className="max-w-4xl mx-auto">
-        <div className="bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-2xl p-3 sm:p-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-0 mb-3 sm:mb-4">
-            <div className="flex-1">
-              <h2 className="text-xl sm:text-2xl font-bold text-white">Checkers Game</h2>
-              <p className="text-xs sm:text-sm text-slate-400">
-                You are: <span className={`font-bold ${yourColor === 'red' ? 'text-red-400' : 'text-black'}`}>
-                  {yourColor === 'red' ? '🔴 Red' : '⚫ Black'}
-                </span>
-              </p>
-              <p className="text-xs sm:text-sm text-slate-400">
-                Current turn: <span className={`font-bold ${currentTurn === 'red' ? 'text-red-400' : 'text-black'}`}>
-                  {currentTurn === 'red' ? '🔴 Red' : '⚫ Black'}
-                </span>
-              </p>
-              {canContinueJump && (
-                <p className="text-yellow-400 text-xs sm:text-sm mt-1">You must continue your jump!</p>
+    <div className="min-h-screen bg-slate-900 p-2 sm:p-4">
+      <div className="max-w-7xl mx-auto">
+        {/* Desktop Layout: Board Left, Chat Right */}
+        <div className="flex flex-col lg:flex-row gap-4">
+          {/* Left Section: Board Area */}
+          <div className="flex-1 lg:flex-[0_0_65%]">
+            <div className="bg-slate-800 rounded-lg p-3 sm:p-4 lg:p-6">
+              {/* Top Bar with Settings */}
+              <div className="flex justify-between items-center mb-3 sm:mb-4">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg sm:text-xl font-semibold text-white">Checkers</h2>
+                  {canContinueJump && (
+                    <span className="text-xs sm:text-sm text-yellow-400 bg-yellow-400/20 px-2 py-1 rounded">
+                      Continue jump!
+                    </span>
+                  )}
+                </div>
+                <Button onClick={handleLeave} variant="danger" size="sm">
+                  <X size={18} className="sm:w-5 sm:h-5" />
+                </Button>
+              </div>
+
+              {/* Opponent Info (Top) */}
+              <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-slate-700 flex items-center justify-center text-lg sm:text-xl">
+                  {opponentColor === 'red' ? '🔴' : '⚫'}
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm sm:text-base font-semibold text-white">{opponentDisplayName}</span>
+                    <span className={`text-xs sm:text-sm px-2 py-0.5 rounded ${
+                      opponentColor === 'red' 
+                        ? 'bg-red-500/20 text-red-400' 
+                        : 'bg-slate-600 text-slate-300'
+                    }`}>
+                      {opponentColor === 'red' ? 'Red' : 'Black'}
+                    </span>
+                    {currentTurn === opponentColor && (
+                      <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Board */}
+              <div 
+                className="grid grid-cols-8 gap-0 bg-amber-800 p-1 sm:p-2 rounded-lg mb-2 sm:mb-3 w-full mx-auto" 
+                style={{ position: 'relative', zIndex: 0, aspectRatio: '1', maxWidth: '100%' }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                }}
+              >
+                {Array.from({ length: BOARD_SIZE * BOARD_SIZE }, (_, i) => renderSquare(i))}
+              </div>
+
+              {/* Current Player Info (Bottom) */}
+              <div className="flex items-center gap-2 sm:gap-3 mt-2 sm:mt-3">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-slate-700 flex items-center justify-center text-lg sm:text-xl">
+                  {yourColor === 'red' ? '🔴' : '⚫'}
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm sm:text-base font-semibold text-white">{currentPlayerDisplayName}</span>
+                    <span className={`text-xs sm:text-sm px-2 py-0.5 rounded ${
+                      yourColor === 'red' 
+                        ? 'bg-red-500/20 text-red-400' 
+                        : 'bg-slate-600 text-slate-300'
+                    }`}>
+                      {yourColor === 'red' ? 'Red' : 'Black'}
+                    </span>
+                    {currentTurn === yourColor && (
+                      <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Winner/Rematch Messages */}
+              {winner && (
+                <div className="mt-3 sm:mt-4 p-3 sm:p-4 bg-green-500/20 border border-green-500/50 rounded-lg text-center">
+                  <p className="text-lg sm:text-xl font-bold text-green-400 mb-1">
+                    {winner === yourColor ? '🎉 You Win!' : '😔 You Lost'}
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 justify-center mt-3">
+                    <Button onClick={handleRematch} className="w-full sm:w-auto">Play Again</Button>
+                    <Button onClick={handleLeave} variant="danger" className="w-full sm:w-auto">Leave</Button>
+                  </div>
+                </div>
               )}
-            </div>
-            <Button onClick={handleLeave} variant="danger" size="sm" className="self-end sm:self-auto">
-              <X size={18} className="sm:w-5 sm:h-5" />
-            </Button>
-          </div>
 
-          {error && (
-            <div className="fixed top-2 sm:top-4 left-2 right-2 sm:left-1/2 sm:right-auto sm:transform sm:-translate-x-1/2 z-50 p-2 sm:p-3 bg-red-500/90 border border-red-500 rounded-lg text-red-100 text-xs sm:text-sm shadow-2xl max-w-md mx-auto">
-              {error}
-            </div>
-          )}
-
-          {opponentDisconnected && (
-            <div className="mb-3 sm:mb-4 p-2 sm:p-3 bg-yellow-500/20 border border-yellow-500/50 rounded-lg text-yellow-400 text-xs sm:text-sm">
-              Opponent disconnected. Waiting for reconnection...
-            </div>
-          )}
-
-          {winner && (
-            <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-green-500/20 border border-green-500/50 rounded-lg text-center">
-              <p className="text-xl sm:text-2xl font-bold text-green-400 mb-1 sm:mb-2">
-                {winner === yourColor ? '🎉 You Win!' : '😔 You Lost'}
-              </p>
-              <p className="text-sm sm:text-base text-slate-300">Winner: {winner === 'red' ? '🔴 Red' : '⚫ Black'}</p>
-            </div>
-          )}
-
-          {/* Checkers Board */}
-          <div 
-            className="grid grid-cols-8 gap-0 bg-amber-800 p-1 sm:p-2 rounded-lg mb-3 sm:mb-4 w-full max-w-full sm:max-w-[600px] mx-auto" 
-            style={{ position: 'relative', zIndex: 0, aspectRatio: '1' }}
-            onClick={(e) => {
-              // Allow clicks to pass through to squares
-              e.stopPropagation();
-            }}
-          >
-            {Array.from({ length: BOARD_SIZE * BOARD_SIZE }, (_, i) => renderSquare(i))}
-          </div>
-
-          {/* Chat Section */}
-          <div className="mb-3 sm:mb-4 bg-slate-700/50 rounded-lg p-2 sm:p-3 md:p-4">
-            <h3 className="text-xs sm:text-sm md:text-base font-semibold text-white mb-1.5 sm:mb-2">Chat</h3>
-            <div className="bg-slate-800 rounded-lg p-1.5 sm:p-2 md:p-3 mb-2 h-24 sm:h-32 md:h-40 overflow-y-auto">
-              {chatMessages.length === 0 ? (
-                <p className="text-xs sm:text-sm text-slate-400 text-center py-3 sm:py-4">No messages yet. Start chatting!</p>
-              ) : (
-                <div className="space-y-1.5 sm:space-y-2">
-                  {chatMessages.map((msg, idx) => (
-                    <div
-                      key={idx}
-                      className={`flex flex-col ${msg.isOwn ? 'items-end' : 'items-start'}`}
-                    >
-                      <div className={`text-[10px] sm:text-xs text-slate-400 mb-0.5 ${msg.isOwn ? 'text-right' : 'text-left'}`}>
-                        {msg.senderNickname}
-                      </div>
-                      <div
-                        className={`max-w-[85%] sm:max-w-[75%] md:max-w-[70%] rounded-lg px-2 sm:px-2.5 md:px-3 py-1 sm:py-1.5 md:py-2 text-xs sm:text-sm break-words ${
-                          msg.isOwn
-                            ? 'bg-purple-600 text-white'
-                            : 'bg-slate-600 text-slate-100'
-                        }`}
-                      >
-                        {msg.message}
-                      </div>
-                    </div>
-                  ))}
-                  <div ref={chatMessagesEndRef} />
+              {showRematch && !winner && (
+                <div className="mt-3 sm:mt-4 text-center">
+                  <p className="text-white text-sm sm:text-base mb-3">Opponent wants to play again!</p>
+                  <Button onClick={handleRematch} className="w-full sm:w-auto">Accept Rematch</Button>
                 </div>
               )}
             </div>
-            <form onSubmit={handleSendChat} className="flex flex-col sm:flex-row gap-2">
-              <input
-                type="text"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                placeholder="Type a message..."
-                className="flex-1 px-2.5 sm:px-3 py-2 sm:py-2.5 text-sm sm:text-base bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 touch-manipulation min-h-[44px] sm:min-h-0"
-                maxLength={200}
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="off"
-                spellCheck="false"
-              />
-              <Button 
-                type="submit" 
-                size="sm" 
-                disabled={!chatInput.trim()}
-                className="w-full sm:w-auto touch-manipulation min-h-[44px] sm:min-h-0"
-              >
-                Send
-              </Button>
-            </form>
           </div>
 
-          {showRematch && !winner && (
-            <div className="text-center">
-              <p className="text-white text-sm sm:text-base mb-3 sm:mb-4">Opponent wants to play again!</p>
-              <Button onClick={handleRematch} className="w-full sm:w-auto">Accept Rematch</Button>
-            </div>
-          )}
+          {/* Right Section: Chat Sidebar */}
+          <div className="lg:flex-[0_0_35%]">
+            <div className="bg-slate-800 rounded-lg p-3 sm:p-4 h-full flex flex-col">
+              <div className="flex items-center justify-between mb-3 sm:mb-4">
+                <h3 className="text-base sm:text-lg font-semibold text-white">Chat</h3>
+                {opponentDisconnected && (
+                  <span className="text-xs text-yellow-400">Reconnecting...</span>
+                )}
+              </div>
 
-          {winner && (
-            <div className="text-center flex flex-col sm:flex-row gap-2 sm:gap-4 sm:justify-center">
-              <Button onClick={handleRematch} className="w-full sm:w-auto">Play Again</Button>
-              <Button onClick={handleLeave} variant="danger" className="w-full sm:w-auto">Leave</Button>
+              {/* Chat Messages */}
+              <div className="bg-slate-900 rounded-lg p-2 sm:p-3 mb-3 flex-1 overflow-y-auto min-h-[200px] sm:min-h-[300px] lg:min-h-[400px]">
+                {chatMessages.length === 0 ? (
+                  <p className="text-xs sm:text-sm text-slate-400 text-center py-8">No messages yet. Start chatting!</p>
+                ) : (
+                  <div className="space-y-2 sm:space-y-3">
+                    {chatMessages.map((msg, idx) => (
+                      <div
+                        key={idx}
+                        className={`flex flex-col ${msg.isOwn ? 'items-end' : 'items-start'}`}
+                      >
+                        <div className={`text-xs text-slate-400 mb-1 ${msg.isOwn ? 'text-right' : 'text-left'}`}>
+                          {msg.senderNickname}
+                        </div>
+                        <div
+                          className={`max-w-[80%] rounded-lg px-3 py-2 text-sm break-words ${
+                            msg.isOwn
+                              ? 'bg-purple-600 text-white'
+                              : 'bg-slate-700 text-slate-100'
+                          }`}
+                        >
+                          {msg.message}
+                        </div>
+                      </div>
+                    ))}
+                    <div ref={chatMessagesEndRef} />
+                  </div>
+                )}
+              </div>
+
+              {/* Chat Input */}
+              <form onSubmit={handleSendChat} className="flex gap-2">
+                <input
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  placeholder="Type a message..."
+                  className="flex-1 px-3 py-2 text-sm bg-slate-900 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 touch-manipulation"
+                  maxLength={200}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck="false"
+                />
+                <Button 
+                  type="submit" 
+                  size="sm" 
+                  disabled={!chatInput.trim()}
+                  className="touch-manipulation"
+                >
+                  Send
+                </Button>
+              </form>
             </div>
-          )}
+          </div>
         </div>
       </div>
+
+      {/* Error Overlay */}
+      {error && (
+        <div className="fixed top-2 sm:top-4 left-2 right-2 sm:left-1/2 sm:right-auto sm:transform sm:-translate-x-1/2 z-50 p-2 sm:p-3 bg-red-500/90 border border-red-500 rounded-lg text-red-100 text-xs sm:text-sm shadow-2xl max-w-md mx-auto">
+          {error}
+        </div>
+      )}
     </div>
   );
 };

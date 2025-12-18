@@ -52,6 +52,7 @@ export interface ServerMessage {
   playerId?: string;
   nickname?: string;
   senderNickname?: string;
+  opponentNickname?: string;
   timestamp?: number;
 }
 

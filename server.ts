@@ -127,12 +127,17 @@ async function startGame(lobby: Lobby) {
     io.to(`player:${playerRed}`).socketsJoin(`match:${matchId}`);
     io.to(`player:${playerBlack}`).socketsJoin(`match:${matchId}`);
     
+    // Get opponent nicknames
+    const playerRedNickname = playerNicknames.get(playerRed) || 'Player 1';
+    const playerBlackNickname = playerNicknames.get(playerBlack) || 'Player 2';
+    
     // Notify players
     io.to(`player:${playerRed}`).emit('GAME_START', {
       type: 'GAME_START',
       matchId,
       yourColor: 'red',
       board,
+      opponentNickname: playerBlackNickname,
     } as ServerMessage);
     
     io.to(`player:${playerBlack}`).emit('GAME_START', {
@@ -140,6 +145,7 @@ async function startGame(lobby: Lobby) {
       matchId,
       yourColor: 'black',
       board,
+      opponentNickname: playerRedNickname,
     } as ServerMessage);
     
     console.log(`Game started: ${matchId}, Red: ${playerRed}, Black: ${playerBlack}`);
