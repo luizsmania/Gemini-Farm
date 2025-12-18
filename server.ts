@@ -414,8 +414,9 @@ io.on('connection', (socket) => {
       
       console.log('[MOVE] Validated, applying move...');
       
-      // Apply move
-      const result = applyMove(game.board, moveMessage.from!, moveMessage.to!, game.currentTurn);
+      // Apply move (use captures from validation)
+      const captures = validation.captures || [];
+      const result = applyMove(game.board, moveMessage.from!, moveMessage.to!, game.currentTurn, captures);
       game.board = result.newBoard;
       game.lastMove = { from: moveMessage.from!, to: moveMessage.to! };
       

@@ -20,7 +20,21 @@ export const CheckersHistory: React.FC<CheckersHistoryProps> = ({ playerId, onBa
   const fetchHistory = async () => {
     try {
       setLoading(true);
+      setError(null);
       const response = await fetch(`/api/match-history?playerId=${encodeURIComponent(playerId)}`);
+      
+      // Check if response is OK
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      // Check content type
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        throw new Error(`Expected JSON but got ${contentType}. Response: ${text.substring(0, 100)}`);
+      }
+      
       const data = await response.json();
 
       if (data.success) {
@@ -29,6 +43,7 @@ export const CheckersHistory: React.FC<CheckersHistoryProps> = ({ playerId, onBa
         setError(data.error || 'Failed to load history');
       }
     } catch (err: any) {
+      console.error('Error fetching match history:', err);
       setError(err.message || 'Failed to load history');
     } finally {
       setLoading(false);

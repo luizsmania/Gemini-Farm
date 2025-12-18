@@ -73,31 +73,54 @@ export function getLegalMoves(board: Board, position: number, currentTurn: Color
   }
   
   // Regular moves (only if no captures available)
-  const directions = isPieceKing 
-    ? [
-        { rowDir: -1, colDir: -1 }, // Up-left
-        { rowDir: -1, colDir: 1 },  // Up-right
-        { rowDir: 1, colDir: -1 },  // Down-left
-        { rowDir: 1, colDir: 1 },   // Down-right
-      ]
-    : pieceColor === 'red'
-    ? [
-        { rowDir: -1, colDir: -1 }, // Up-left
-        { rowDir: -1, colDir: 1 },  // Up-right
-      ]
-    : [
-        { rowDir: 1, colDir: -1 },  // Down-left
-        { rowDir: 1, colDir: 1 },   // Down-right
-      ];
-  
-  for (const { rowDir, colDir } of directions) {
-    const newRow = row + rowDir;
-    const newCol = col + colDir;
+  if (isPieceKing) {
+    // Kings can move unlimited squares diagonally
+    const directions = [
+      { rowDir: -1, colDir: -1 }, // Up-left
+      { rowDir: -1, colDir: 1 },  // Up-right
+      { rowDir: 1, colDir: -1 },  // Down-left
+      { rowDir: 1, colDir: 1 },   // Down-right
+    ];
     
-    if (newRow >= 0 && newRow < BOARD_SIZE && newCol >= 0 && newCol < BOARD_SIZE) {
-      const newIndex = posToIndex(newRow, newCol);
-      if (board[newIndex] === null) {
+    for (const { rowDir, colDir } of directions) {
+      // Keep moving in this direction until we hit a piece or edge
+      for (let distance = 1; distance < BOARD_SIZE; distance++) {
+        const newRow = row + (rowDir * distance);
+        const newCol = col + (colDir * distance);
+        
+        if (newRow < 0 || newRow >= BOARD_SIZE || newCol < 0 || newCol >= BOARD_SIZE) {
+          break; // Out of bounds
+        }
+        
+        const newIndex = posToIndex(newRow, newCol);
+        if (board[newIndex] !== null) {
+          break; // Hit a piece, can't go further
+        }
+        
         moves.push(newIndex);
+      }
+    }
+  } else {
+    // Regular pieces can only move one square
+    const directions = pieceColor === 'red'
+      ? [
+          { rowDir: -1, colDir: -1 }, // Up-left
+          { rowDir: -1, colDir: 1 },  // Up-right
+        ]
+      : [
+          { rowDir: 1, colDir: -1 },  // Down-left
+          { rowDir: 1, colDir: 1 },   // Down-right
+        ];
+    
+    for (const { rowDir, colDir } of directions) {
+      const newRow = row + rowDir;
+      const newCol = col + colDir;
+      
+      if (newRow >= 0 && newRow < BOARD_SIZE && newCol >= 0 && newCol < BOARD_SIZE) {
+        const newIndex = posToIndex(newRow, newCol);
+        if (board[newIndex] === null) {
+          moves.push(newIndex);
+        }
       }
     }
   }
@@ -110,35 +133,76 @@ function findCaptures(board: Board, position: number, currentTurn: Color, isKing
   const captures: number[] = [];
   const { row, col } = indexToPos(position);
   
-  const directions = isKing
-    ? [
-        { rowDir: -2, colDir: -2 }, // Up-left
-        { rowDir: -2, colDir: 2 },  // Up-right
-        { rowDir: 2, colDir: -2 },  // Down-left
-        { rowDir: 2, colDir: 2 },   // Down-right
-      ]
-    : currentTurn === 'red'
-    ? [
-        { rowDir: -2, colDir: -2 }, // Up-left
-        { rowDir: -2, colDir: 2 },  // Up-right
-      ]
-    : [
-        { rowDir: 2, colDir: -2 },  // Down-left
-        { rowDir: 2, colDir: 2 },   // Down-right
-      ];
-  
-  for (const { rowDir, colDir } of directions) {
-    const newRow = row + rowDir;
-    const newCol = col + colDir;
+  if (isKing) {
+    // Kings can capture pieces multiple squares away
+    const directions = [
+      { rowDir: -1, colDir: -1 }, // Up-left
+      { rowDir: -1, colDir: 1 },  // Up-right
+      { rowDir: 1, colDir: -1 },  // Down-left
+      { rowDir: 1, colDir: 1 },   // Down-right
+    ];
     
-    if (newRow >= 0 && newRow < BOARD_SIZE && newCol >= 0 && newCol < BOARD_SIZE) {
-      const newIndex = posToIndex(newRow, newCol);
-      const jumpOverIndex = posToIndex(row + rowDir / 2, col + colDir / 2);
+    for (const { rowDir, colDir } of directions) {
+      // Look for an opponent piece in this direction
+      for (let distance = 1; distance < BOARD_SIZE; distance++) {
+        const checkRow = row + (rowDir * distance);
+        const checkCol = col + (colDir * distance);
+        
+        if (checkRow < 0 || checkRow >= BOARD_SIZE || checkCol < 0 || checkCol >= BOARD_SIZE) {
+          break; // Out of bounds
+        }
+        
+        const checkIndex = posToIndex(checkRow, checkCol);
+        const checkPiece = board[checkIndex];
+        
+        if (checkPiece === null) {
+          continue; // Empty square, keep looking
+        }
+        
+        const checkColor = getPieceColor(checkPiece);
+        if (checkColor === currentTurn) {
+          break; // Hit own piece, can't capture
+        }
+        
+        // Found opponent piece - check if we can land after it
+        const landRow = checkRow + rowDir;
+        const landCol = checkCol + colDir;
+        
+        if (landRow >= 0 && landRow < BOARD_SIZE && landCol >= 0 && landCol < BOARD_SIZE) {
+          const landIndex = posToIndex(landRow, landCol);
+          if (board[landIndex] === null) {
+            captures.push(landIndex);
+          }
+        }
+        
+        break; // Found a piece (either captured or blocked)
+      }
+    }
+  } else {
+    // Regular pieces can only capture 2 squares away
+    const directions = currentTurn === 'red'
+      ? [
+          { rowDir: -2, colDir: -2 }, // Up-left
+          { rowDir: -2, colDir: 2 },  // Up-right
+        ]
+      : [
+          { rowDir: 2, colDir: -2 },  // Down-left
+          { rowDir: 2, colDir: 2 },   // Down-right
+        ];
+    
+    for (const { rowDir, colDir } of directions) {
+      const newRow = row + rowDir;
+      const newCol = col + colDir;
       
-      if (board[newIndex] === null && board[jumpOverIndex] !== null) {
-        const jumpOverColor = getPieceColor(board[jumpOverIndex]!);
-        if (jumpOverColor !== null && jumpOverColor !== currentTurn) {
-          captures.push(newIndex);
+      if (newRow >= 0 && newRow < BOARD_SIZE && newCol >= 0 && newCol < BOARD_SIZE) {
+        const newIndex = posToIndex(newRow, newCol);
+        const jumpOverIndex = posToIndex(row + rowDir / 2, col + colDir / 2);
+        
+        if (board[newIndex] === null && board[jumpOverIndex] !== null) {
+          const jumpOverColor = getPieceColor(board[jumpOverIndex]!);
+          if (jumpOverColor !== null && jumpOverColor !== currentTurn) {
+            captures.push(newIndex);
+          }
         }
       }
     }
@@ -193,11 +257,62 @@ export function validateMove(
   }
   
   // Check if it's a capture
-  const isCapture = Math.abs(rowDiff) === 2;
-  const isRegularMove = Math.abs(rowDiff) === 1;
+  // For regular pieces: must be exactly 2 squares
+  // For kings: can be any distance >= 2, and must have exactly one opponent piece in path
+  let isCapture = false;
+  if (pieceIsKing) {
+    // For kings, check if there's exactly one opponent piece in the path
+    if (Math.abs(rowDiff) >= 2 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+      const rowStep = rowDiff > 0 ? 1 : -1;
+      const colStep = colDiff > 0 ? 1 : -1;
+      let opponentPieces = 0;
+      
+      for (let i = 1; i < Math.abs(rowDiff); i++) {
+        const checkRow = fromRow + (rowStep * i);
+        const checkCol = fromCol + (colStep * i);
+        const checkIndex = posToIndex(checkRow, checkCol);
+        const checkPiece = board[checkIndex];
+        
+        if (checkPiece !== null) {
+          const checkColor = getPieceColor(checkPiece);
+          if (checkColor === currentTurn) {
+            break; // Hit own piece, not a capture
+          }
+          opponentPieces++;
+        }
+      }
+      
+      isCapture = opponentPieces === 1;
+    }
+  } else {
+    // Regular pieces: exactly 2 squares
+    isCapture = Math.abs(rowDiff) === 2 && Math.abs(colDiff) === 2;
+  }
+  
+  // Regular move: 1 square for regular pieces, any distance for kings (if not a capture)
+  const isRegularMove = pieceIsKing 
+    ? (Math.abs(rowDiff) === Math.abs(colDiff) && Math.abs(rowDiff) >= 1 && !isCapture)
+    : (Math.abs(rowDiff) === 1 && Math.abs(colDiff) === 1);
   
   if (!isCapture && !isRegularMove) {
     return { valid: false, reason: 'Invalid move distance' };
+  }
+  
+  // For kings moving multiple squares, check that the path is clear
+  if (pieceIsKing && isRegularMove && Math.abs(rowDiff) > 1) {
+    const rowStep = rowDiff > 0 ? 1 : -1;
+    const colStep = colDiff > 0 ? 1 : -1;
+    
+    // Check each square along the path
+    for (let i = 1; i < Math.abs(rowDiff); i++) {
+      const checkRow = fromRow + (rowStep * i);
+      const checkCol = fromCol + (colStep * i);
+      const checkIndex = posToIndex(checkRow, checkCol);
+      
+      if (board[checkIndex] !== null) {
+        return { valid: false, reason: 'Path is blocked' };
+      }
+    }
   }
   
   // Check if there are mandatory captures available
@@ -210,22 +325,55 @@ export function validateMove(
   
   // Validate capture
   if (isCapture) {
-    const jumpOverIndex = posToIndex(
-      fromRow + (rowDiff / 2),
-      fromCol + (colDiff / 2)
-    );
-    const jumpedPiece = board[jumpOverIndex];
-    
-    if (jumpedPiece === null) {
-      return { valid: false, reason: 'No piece to capture' };
+    if (pieceIsKing) {
+      // King capture - check that there's exactly one opponent piece in the path
+      const rowStep = rowDiff > 0 ? 1 : -1;
+      const colStep = colDiff > 0 ? 1 : -1;
+      const captures: number[] = [];
+      
+      // Check each square along the path
+      for (let i = 1; i < Math.abs(rowDiff); i++) {
+        const checkRow = fromRow + (rowStep * i);
+        const checkCol = fromCol + (colStep * i);
+        const checkIndex = posToIndex(checkRow, checkCol);
+        const checkPiece = board[checkIndex];
+        
+        if (checkPiece !== null) {
+          const checkColor = getPieceColor(checkPiece);
+          if (checkColor === currentTurn) {
+            return { valid: false, reason: 'Cannot jump over your own piece' };
+          }
+          captures.push(checkIndex);
+        }
+      }
+      
+      if (captures.length === 0) {
+        return { valid: false, reason: 'No piece to capture' };
+      }
+      if (captures.length > 1) {
+        return { valid: false, reason: 'Cannot capture multiple pieces in one move' };
+      }
+      
+      return { valid: true, captures };
+    } else {
+      // Regular piece capture - must be exactly 2 squares
+      const jumpOverIndex = posToIndex(
+        fromRow + (rowDiff / 2),
+        fromCol + (colDiff / 2)
+      );
+      const jumpedPiece = board[jumpOverIndex];
+      
+      if (jumpedPiece === null) {
+        return { valid: false, reason: 'No piece to capture' };
+      }
+      
+      const jumpedColor = getPieceColor(jumpedPiece);
+      if (jumpedColor === currentTurn) {
+        return { valid: false, reason: 'Cannot capture your own piece' };
+      }
+      
+      return { valid: true, captures: [jumpOverIndex] };
     }
-    
-    const jumpedColor = getPieceColor(jumpedPiece);
-    if (jumpedColor === currentTurn) {
-      return { valid: false, reason: 'Cannot capture your own piece' };
-    }
-    
-    return { valid: true, captures: [jumpOverIndex] };
   }
   
   // Validate regular move direction (only for non-kings)
@@ -261,27 +409,18 @@ export function applyMove(
   board: Board,
   from: number,
   to: number,
-  currentTurn: Color
+  currentTurn: Color,
+  capturesToRemove: number[] = []
 ): { newBoard: Board; captures: number[]; promoted: boolean } {
   const newBoard: Board = [...board];
   const piece = newBoard[from]!;
-  let captures: number[] = [];
   let promoted = false;
   
-  // Check if it's a capture
-  const { row: fromRow, col: fromCol } = indexToPos(from);
-  const { row: toRow, col: toCol } = indexToPos(to);
-  const rowDiff = toRow - fromRow;
-  const colDiff = toCol - fromCol;
+  const { row: toRow } = indexToPos(to);
   
-  if (Math.abs(rowDiff) === 2) {
-    // Capture
-    const jumpOverIndex = posToIndex(
-      fromRow + (rowDiff / 2),
-      fromCol + (colDiff / 2)
-    );
-    captures.push(jumpOverIndex);
-    newBoard[jumpOverIndex] = null;
+  // Remove captured pieces
+  for (const captureIndex of capturesToRemove) {
+    newBoard[captureIndex] = null;
   }
   
   // Move piece
@@ -299,7 +438,7 @@ export function applyMove(
     }
   }
   
-  return { newBoard, captures, promoted };
+  return { newBoard, captures: capturesToRemove, promoted };
 }
 
 // Check if a piece can continue jumping after a capture

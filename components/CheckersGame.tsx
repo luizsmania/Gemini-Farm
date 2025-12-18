@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { checkersWebSocketService } from '../services/checkersWebSocketService';
 import { ServerMessage, Board, Piece, Color } from '../types/checkers';
 import { Button } from './Button';
@@ -15,12 +15,13 @@ interface CheckersGameProps {
 const BOARD_SIZE = 8;
 
 export const CheckersGame: React.FC<CheckersGameProps> = ({
-  matchId,
+  matchId: initialMatchId,
   initialBoard,
   yourColor,
   playerId,
   onLeave,
 }) => {
+  const [matchId, setMatchId] = useState<string>(initialMatchId);
   const [board, setBoard] = useState<Board>(initialBoard);
   const [currentTurn, setCurrentTurn] = useState<Color>('red');
   const [selectedSquare, setSelectedSquare] = useState<number | null>(null);
@@ -31,6 +32,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [opponentDisconnected, setOpponentDisconnected] = useState(false);
   const [showRematch, setShowRematch] = useState(false);
+  const moveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const handleMoveAccepted = (message: ServerMessage) => {
@@ -85,11 +87,33 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       }
     };
 
+    const handleGameStart = (message: ServerMessage) => {
+      if (message.type === 'GAME_START' && message.matchId && message.board) {
+        // Rematch - reset game state
+        setMatchId(message.matchId);
+        setBoard(message.board);
+        setCurrentTurn('red');
+        setSelectedSquare(null);
+        setLegalMoves([]);
+        setWinner(null);
+        setCanContinueJump(false);
+        setContinueJumpFrom(null);
+        setError(null);
+        setShowRematch(false);
+        // Clear any pending timeouts
+        if (moveTimeoutRef.current) {
+          clearTimeout(moveTimeoutRef.current);
+          moveTimeoutRef.current = null;
+        }
+      }
+    };
+
     checkersWebSocketService.on('MOVE_ACCEPTED', handleMoveAccepted);
     checkersWebSocketService.on('MOVE_REJECTED', handleMoveRejected);
     checkersWebSocketService.on('GAME_OVER', handleGameOver);
     checkersWebSocketService.on('PLAYER_DISCONNECTED', handlePlayerDisconnected);
     checkersWebSocketService.on('REMATCH_REQUEST', handleRematchRequest);
+    checkersWebSocketService.on('GAME_START', handleGameStart);
 
     return () => {
       checkersWebSocketService.off('MOVE_ACCEPTED', handleMoveAccepted);
@@ -97,16 +121,21 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       checkersWebSocketService.off('GAME_OVER', handleGameOver);
       checkersWebSocketService.off('PLAYER_DISCONNECTED', handlePlayerDisconnected);
       checkersWebSocketService.off('REMATCH_REQUEST', handleRematchRequest);
+      checkersWebSocketService.off('GAME_START', handleGameStart);
+      // Clear timeout on unmount
+      if (moveTimeoutRef.current) {
+        clearTimeout(moveTimeoutRef.current);
+      }
     };
   }, []);
 
-  const getPieceDisplay = (piece: Piece): string => {
+  const getPieceDisplay = (piece: Piece): { emoji: string; isKing: boolean } => {
     switch (piece) {
-      case 'r': return '🔴';
-      case 'R': return '🔴👑';
-      case 'b': return '⚫';
-      case 'B': return '⚫👑';
-      default: return '';
+      case 'r': return { emoji: '🔴', isKing: false };
+      case 'R': return { emoji: '🔴', isKing: true };
+      case 'b': return { emoji: '⚫', isKing: false };
+      case 'B': return { emoji: '⚫', isKing: true };
+      default: return { emoji: '', isKing: false };
     }
   };
 
@@ -142,28 +171,77 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     
     // Check for captures first (mandatory)
     const captures: number[] = [];
-    const captureDirections = [
-      { rowDir: -2, colDir: -2 }, // Up-left capture
-      { rowDir: -2, colDir: 2 },  // Up-right capture
-      { rowDir: 2, colDir: -2 },  // Down-left capture
-      { rowDir: 2, colDir: 2 },   // Down-right capture
-    ];
     
-    for (const { rowDir, colDir } of captureDirections) {
-      const newRow = row + rowDir;
-      const newCol = col + colDir;
-      const jumpOverRow = row + rowDir / 2;
-      const jumpOverCol = col + colDir / 2;
+    if (isKing) {
+      // Kings can capture pieces multiple squares away
+      const directions = [
+        { rowDir: -1, colDir: -1 }, // Up-left
+        { rowDir: -1, colDir: 1 },  // Up-right
+        { rowDir: 1, colDir: -1 },  // Down-left
+        { rowDir: 1, colDir: 1 },   // Down-right
+      ];
       
-      if (newRow >= 0 && newRow < BOARD_SIZE && newCol >= 0 && newCol < BOARD_SIZE) {
-        const newIndex = newRow * BOARD_SIZE + newCol;
-        const jumpOverIndex = jumpOverRow * BOARD_SIZE + jumpOverCol;
+      for (const { rowDir, colDir } of directions) {
+        // Look for an opponent piece in this direction
+        for (let distance = 1; distance < BOARD_SIZE; distance++) {
+          const checkRow = row + (rowDir * distance);
+          const checkCol = col + (colDir * distance);
+          
+          if (checkRow < 0 || checkRow >= BOARD_SIZE || checkCol < 0 || checkCol >= BOARD_SIZE) {
+            break; // Out of bounds
+          }
+          
+          const checkIndex = checkRow * BOARD_SIZE + checkCol;
+          const checkPiece = board[checkIndex];
+          
+          if (checkPiece === null) {
+            continue; // Empty square, keep looking
+          }
+          
+          const checkColor = (checkPiece === 'r' || checkPiece === 'R') ? 'red' : 'black';
+          if (checkColor === pieceColor) {
+            break; // Hit own piece, can't capture
+          }
+          
+          // Found opponent piece - check if we can land after it
+          const landRow = checkRow + rowDir;
+          const landCol = checkCol + colDir;
+          
+          if (landRow >= 0 && landRow < BOARD_SIZE && landCol >= 0 && landCol < BOARD_SIZE) {
+            const landIndex = landRow * BOARD_SIZE + landCol;
+            if (board[landIndex] === null) {
+              captures.push(landIndex);
+            }
+          }
+          
+          break; // Found a piece (either captured or blocked)
+        }
+      }
+    } else {
+      // Regular pieces can only capture 2 squares away
+      const captureDirections = [
+        { rowDir: -2, colDir: -2 }, // Up-left capture
+        { rowDir: -2, colDir: 2 },  // Up-right capture
+        { rowDir: 2, colDir: -2 },  // Down-left capture
+        { rowDir: 2, colDir: 2 },   // Down-right capture
+      ];
+      
+      for (const { rowDir, colDir } of captureDirections) {
+        const newRow = row + rowDir;
+        const newCol = col + colDir;
+        const jumpOverRow = row + rowDir / 2;
+        const jumpOverCol = col + colDir / 2;
         
-        if (board[newIndex] === null && board[jumpOverIndex] !== null) {
-          const jumpedPiece = board[jumpOverIndex]!;
-          const jumpedColor = (jumpedPiece === 'r' || jumpedPiece === 'R') ? 'red' : 'black';
-          if (jumpedColor !== pieceColor) {
-            captures.push(newIndex);
+        if (newRow >= 0 && newRow < BOARD_SIZE && newCol >= 0 && newCol < BOARD_SIZE) {
+          const newIndex = newRow * BOARD_SIZE + newCol;
+          const jumpOverIndex = jumpOverRow * BOARD_SIZE + jumpOverCol;
+          
+          if (board[newIndex] === null && board[jumpOverIndex] !== null) {
+            const jumpedPiece = board[jumpOverIndex]!;
+            const jumpedColor = (jumpedPiece === 'r' || jumpedPiece === 'R') ? 'red' : 'black';
+            if (jumpedColor !== pieceColor) {
+              captures.push(newIndex);
+            }
           }
         }
       }
@@ -174,31 +252,54 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     }
     
     // Regular moves (only if no captures available)
-    const directions = isKing 
-      ? [
-          { rowDir: -1, colDir: -1 }, // Up-left
-          { rowDir: -1, colDir: 1 },  // Up-right
-          { rowDir: 1, colDir: -1 },  // Down-left
-          { rowDir: 1, colDir: 1 },   // Down-right
-        ]
-      : pieceColor === 'red'
-      ? [
-          { rowDir: -1, colDir: -1 }, // Up-left
-          { rowDir: -1, colDir: 1 },  // Up-right
-        ]
-      : [
-          { rowDir: 1, colDir: -1 },  // Down-left
-          { rowDir: 1, colDir: 1 },   // Down-right
-        ];
-    
-    for (const { rowDir, colDir } of directions) {
-      const newRow = row + rowDir;
-      const newCol = col + colDir;
+    if (isKing) {
+      // Kings can move unlimited squares diagonally
+      const directions = [
+        { rowDir: -1, colDir: -1 }, // Up-left
+        { rowDir: -1, colDir: 1 },  // Up-right
+        { rowDir: 1, colDir: -1 },  // Down-left
+        { rowDir: 1, colDir: 1 },   // Down-right
+      ];
       
-      if (newRow >= 0 && newRow < BOARD_SIZE && newCol >= 0 && newCol < BOARD_SIZE) {
-        const newIndex = newRow * BOARD_SIZE + newCol;
-        if (board[newIndex] === null) {
+      for (const { rowDir, colDir } of directions) {
+        // Keep moving in this direction until we hit a piece or edge
+        for (let distance = 1; distance < BOARD_SIZE; distance++) {
+          const newRow = row + (rowDir * distance);
+          const newCol = col + (colDir * distance);
+          
+          if (newRow < 0 || newRow >= BOARD_SIZE || newCol < 0 || newCol >= BOARD_SIZE) {
+            break; // Out of bounds
+          }
+          
+          const newIndex = newRow * BOARD_SIZE + newCol;
+          if (board[newIndex] !== null) {
+            break; // Hit a piece, can't go further
+          }
+          
           moves.push(newIndex);
+        }
+      }
+    } else {
+      // Regular pieces can only move one square
+      const directions = pieceColor === 'red'
+        ? [
+            { rowDir: -1, colDir: -1 }, // Up-left
+            { rowDir: -1, colDir: 1 },  // Up-right
+          ]
+        : [
+            { rowDir: 1, colDir: -1 },  // Down-left
+            { rowDir: 1, colDir: 1 },   // Down-right
+          ];
+      
+      for (const { rowDir, colDir } of directions) {
+        const newRow = row + rowDir;
+        const newCol = col + colDir;
+        
+        if (newRow >= 0 && newRow < BOARD_SIZE && newCol >= 0 && newCol < BOARD_SIZE) {
+          const newIndex = newRow * BOARD_SIZE + newCol;
+          if (board[newIndex] === null) {
+            moves.push(newIndex);
+          }
         }
       }
     }
@@ -271,15 +372,24 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         if (legalMoves.length > 0 && legalMoves.includes(index)) {
           console.log('Making move from', selectedSquare, 'to', index);
           console.log('Socket connected?', checkersWebSocketService.isConnected());
+          const fromSquare = selectedSquare; // Capture value for timeout check
           checkersWebSocketService.makeMove(matchId, selectedSquare, index);
           setError(null);
-          // Don't clear selection yet - wait for server response
+          // Clear any existing timeout
+          if (moveTimeoutRef.current) {
+            clearTimeout(moveTimeoutRef.current);
+          }
           // Set a timeout to show error if no response
-          setTimeout(() => {
-            if (selectedSquare === selectedSquare) { // Still selected after 3 seconds
-              console.warn('No response from server after 3 seconds');
-              setError('No response from server. Check connection.');
-            }
+          moveTimeoutRef.current = setTimeout(() => {
+            // Check if the square is still selected (move wasn't processed)
+            setSelectedSquare(current => {
+              if (current === fromSquare) {
+                console.warn('No response from server after 3 seconds');
+                setError('No response from server. Check connection.');
+              }
+              return current;
+            });
+            moveTimeoutRef.current = null;
           }, 3000);
         } else if (legalMoves.length === 0) {
           console.log('No legal moves available');
@@ -295,6 +405,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   }, [board, selectedSquare, yourColor, currentTurn, canContinueJump, continueJumpFrom, winner, matchId, legalMoves, calculateLegalMoves]);
 
   const handleRematch = () => {
+    // Use current matchId from state
     checkersWebSocketService.acceptRematch(matchId);
     setShowRematch(false);
   };
@@ -322,16 +433,19 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         className={`${colorClass} aspect-square flex items-center justify-center cursor-pointer transition-all hover:scale-105 border-2 ${
           isSelected ? 'border-yellow-400' : 'border-transparent'
         }`}
-        style={{ position: 'relative', zIndex: 1 }}
+        style={{ position: 'relative', zIndex: 1, minHeight: '60px', minWidth: '60px' }}
       >
-        {piece && (
-          <span 
-            className="text-4xl filter drop-shadow-lg pointer-events-none select-none"
-            style={{ userSelect: 'none' }}
-          >
-            {getPieceDisplay(piece)}
-          </span>
-        )}
+        {piece && (() => {
+          const display = getPieceDisplay(piece);
+          return (
+            <div className="relative flex items-center justify-center pointer-events-none select-none w-full h-full">
+              <span className="text-4xl filter drop-shadow-lg relative z-10">{display.emoji}</span>
+              {display.isKing && (
+                <span className="text-2xl absolute -top-1 left-1/2 transform -translate-x-1/2 filter drop-shadow-lg z-20">👑</span>
+              )}
+            </div>
+          );
+        })()}
       </div>
     );
   };
