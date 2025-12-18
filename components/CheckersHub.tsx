@@ -8,16 +8,65 @@ interface CheckersHubProps {
   onNicknameSet: (nickname: string, playerId: string) => void;
   onGameStart: (matchId: string, yourColor: 'red' | 'black', board: any[]) => void;
   playerId?: string;
+  nickname?: string;
   onShowHistory?: () => void;
+  onLogout?: () => void;
 }
 
-export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameStart, playerId, onShowHistory }) => {
-  const [nickname, setNickname] = useState('');
+export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameStart, playerId, nickname: propNickname, onShowHistory, onLogout }) => {
+  const [nickname, setNickname] = useState(propNickname || '');
+  // Don't set nicknameSet to true initially - let the server confirm it
   const [nicknameSet, setNicknameSet] = useState(false);
   const [lobbies, setLobbies] = useState<LobbyInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const autoSetRef = useRef(false);
+
+  const handleSetNicknameAuto = async (nick: string) => {
+    // Clear any existing timeout
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // First ensure connection
+      if (!checkersWebSocketService.isConnected()) {
+        await checkersWebSocketService.connect();
+      }
+      await checkersWebSocketService.setNickname(nick.trim());
+      // The nickname will be set when we receive NICKNAME_SET message
+      // If no response after 5 seconds, show error
+      timeoutRef.current = setTimeout(() => {
+        const wsUrl = import.meta.env.VITE_WS_URL || 'not set';
+        setError(`Server did not respond. Check: 1) VITE_WS_URL is set in Vercel (currently: ${wsUrl}), 2) WebSocket server is running on Railway/Render, 3) Server URL is correct.`);
+        setLoading(false);
+        timeoutRef.current = null;
+      }, 5000);
+    } catch (error: any) {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+      const errorMsg = error.message || 'Failed to connect to server';
+      const wsUrl = import.meta.env.VITE_WS_URL || 'not set';
+      setError(`Connection failed: ${errorMsg}. Check VITE_WS_URL in Vercel (currently: ${wsUrl}) and ensure the WebSocket server is running.`);
+      setLoading(false);
+    }
+  };
+
+  // Auto-set nickname if it exists from props (loaded from localStorage)
+  useEffect(() => {
+    if (propNickname && !autoSetRef.current && !nicknameSet) {
+      autoSetRef.current = true;
+      // Automatically set the nickname on the server
+      handleSetNicknameAuto(propNickname);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [propNickname, nicknameSet]);
 
   useEffect(() => {
     const handleLobbyList = (message: ServerMessage) => {
@@ -62,7 +111,7 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
       checkersWebSocketService.off('GAME_START', handleGameStart);
       checkersWebSocketService.off('ERROR', handleError);
     };
-  }, [onGameStart]);
+  }, [onGameStart, onNicknameSet]);
 
   const handleSetNickname = async () => {
     if (!nickname.trim()) {
@@ -70,38 +119,7 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
       return;
     }
 
-    // Clear any existing timeout
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-
-    setLoading(true);
-    setError(null);
-    
-    try {
-      // First ensure connection
-      if (!checkersWebSocketService.isConnected()) {
-        await checkersWebSocketService.connect();
-      }
-      await checkersWebSocketService.setNickname(nickname.trim());
-      // The nickname will be set when we receive NICKNAME_SET message
-      // If no response after 5 seconds, show error
-      timeoutRef.current = setTimeout(() => {
-        const wsUrl = import.meta.env.VITE_WS_URL || 'not set';
-        setError(`Server did not respond. Check: 1) VITE_WS_URL is set in Vercel (currently: ${wsUrl}), 2) WebSocket server is running on Railway/Render, 3) Server URL is correct.`);
-        setLoading(false);
-        timeoutRef.current = null;
-      }, 5000);
-    } catch (error: any) {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }
-      const errorMsg = error.message || 'Failed to connect to server';
-      const wsUrl = import.meta.env.VITE_WS_URL || 'not set';
-      setError(`Connection failed: ${errorMsg}. Check VITE_WS_URL in Vercel (currently: ${wsUrl}) and ensure the WebSocket server is running.`);
-      setLoading(false);
-    }
+    await handleSetNicknameAuto(nickname);
   };
 
   const handleCreateLobby = () => {
@@ -166,10 +184,19 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4">
       <div className="max-w-4xl mx-auto">
         <div className="bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-2xl p-6 mb-6">
-          <h1 className="text-3xl font-bold mb-2 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-            Online Checkers
-          </h1>
-          <p className="text-slate-400">Welcome, <span className="text-purple-400 font-semibold">{nickname}</span>!</p>
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-3xl font-bold mb-2 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+                Online Checkers
+              </h1>
+              <p className="text-slate-400">Welcome, <span className="text-purple-400 font-semibold">{nickname}</span>!</p>
+            </div>
+            {onLogout && (
+              <Button onClick={onLogout} variant="danger" size="sm">
+                Logout
+              </Button>
+            )}
+          </div>
         </div>
 
         <div className="bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-2xl p-6 mb-6">

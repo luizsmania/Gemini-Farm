@@ -26,6 +26,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   const [currentTurn, setCurrentTurn] = useState<Color>('red');
   const [selectedSquare, setSelectedSquare] = useState<number | null>(null);
   const [legalMoves, setLegalMoves] = useState<number[]>([]);
+  const [mandatoryCaptures, setMandatoryCaptures] = useState<number[]>([]);
   const [winner, setWinner] = useState<Color | null>(null);
   const [canContinueJump, setCanContinueJump] = useState(false);
   const [continueJumpFrom, setContinueJumpFrom] = useState<number | null>(null);
@@ -33,6 +34,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   const [opponentDisconnected, setOpponentDisconnected] = useState(false);
   const [showRematch, setShowRematch] = useState(false);
   const moveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const errorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const handleMoveAccepted = (message: ServerMessage) => {
@@ -51,6 +53,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         }
         setSelectedSquare(null);
         setLegalMoves([]);
+        setMandatoryCaptures([]);
         setError(null);
       } else {
         console.log('MOVE_ACCEPTED message missing board:', message);
@@ -64,6 +67,15 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         setError(message.reason);
         setSelectedSquare(null);
         setLegalMoves([]);
+        setMandatoryCaptures([]);
+        // Clear error after 3 seconds
+        if (errorTimeoutRef.current) {
+          clearTimeout(errorTimeoutRef.current);
+        }
+        errorTimeoutRef.current = setTimeout(() => {
+          setError(null);
+          errorTimeoutRef.current = null;
+        }, 3000);
       }
     };
 
@@ -122,9 +134,12 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       checkersWebSocketService.off('PLAYER_DISCONNECTED', handlePlayerDisconnected);
       checkersWebSocketService.off('REMATCH_REQUEST', handleRematchRequest);
       checkersWebSocketService.off('GAME_START', handleGameStart);
-      // Clear timeout on unmount
+      // Clear timeouts on unmount
       if (moveTimeoutRef.current) {
         clearTimeout(moveTimeoutRef.current);
+      }
+      if (errorTimeoutRef.current) {
+        clearTimeout(errorTimeoutRef.current);
       }
     };
   }, []);
@@ -143,8 +158,9 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     return (row + col) % 2 === 1;
   };
 
-  const getSquareColor = (index: number, isSelected: boolean, isLegalMove: boolean): string => {
+  const getSquareColor = (index: number, isSelected: boolean, isLegalMove: boolean, isMandatoryCapture: boolean): string => {
     if (isSelected) return 'bg-yellow-500/50';
+    if (isMandatoryCapture) return 'bg-blue-500/50';
     if (isLegalMove) return 'bg-green-500/30';
     const { row, col } = indexToPos(index);
     return isDarkSquare(row, col) ? 'bg-amber-900' : 'bg-amber-50';
@@ -307,6 +323,37 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     return moves;
   }, [board, currentTurn]);
 
+  // Calculate all mandatory captures for current player
+  const calculateAllMandatoryCaptures = useCallback((): number[] => {
+    const allCaptures: number[] = [];
+    
+    for (let i = 0; i < BOARD_SIZE * BOARD_SIZE; i++) {
+      const piece = board[i];
+      if (piece === null) continue;
+      
+      const pieceColor = (piece === 'r' || piece === 'R') ? 'red' : 'black';
+      if (pieceColor !== currentTurn) continue;
+      
+      const captures = calculateLegalMoves(i);
+      // If calculateLegalMoves returns captures (mandatory), add them
+      if (captures.length > 0) {
+        // Check if these are captures by verifying they're 2+ squares away
+        const { row: fromRow, col: fromCol } = indexToPos(i);
+        for (const captureIndex of captures) {
+          const { row: toRow, col: toCol } = indexToPos(captureIndex);
+          const rowDiff = Math.abs(toRow - fromRow);
+          const colDiff = Math.abs(toCol - fromCol);
+          // Captures are at least 2 squares away
+          if (rowDiff >= 2 && colDiff >= 2) {
+            allCaptures.push(captureIndex);
+          }
+        }
+      }
+    }
+    
+    return allCaptures;
+  }, [board, currentTurn, calculateLegalMoves]);
+
   const handleSquareClick = useCallback((index: number) => {
     console.log('handleSquareClick called with index:', index);
     const piece = board[index];
@@ -324,6 +371,14 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     if (currentTurn !== yourColor) {
       console.log('Not your turn');
       setError('Wait for your turn');
+      // Clear error after 3 seconds
+      if (errorTimeoutRef.current) {
+        clearTimeout(errorTimeoutRef.current);
+      }
+      errorTimeoutRef.current = setTimeout(() => {
+        setError(null);
+        errorTimeoutRef.current = null;
+      }, 3000);
       return;
     }
 
@@ -375,6 +430,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           const fromSquare = selectedSquare; // Capture value for timeout check
           checkersWebSocketService.makeMove(matchId, selectedSquare, index);
           setError(null);
+          setMandatoryCaptures([]);
           // Clear any existing timeout
           if (moveTimeoutRef.current) {
             clearTimeout(moveTimeoutRef.current);
@@ -396,9 +452,34 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           setError('No legal moves available. Select a different piece.');
           setSelectedSquare(null);
           setLegalMoves([]);
+          setMandatoryCaptures([]);
         } else {
-          console.log('Invalid move - not in legal moves list');
-          setError(`Invalid move - select a highlighted square. Legal moves: ${legalMoves.join(', ')}`);
+          // Check if captures are mandatory
+          const allMandatoryCaptures = calculateAllMandatoryCaptures();
+          if (allMandatoryCaptures.length > 0) {
+            console.log('Invalid move - captures are mandatory');
+            setError('Capture is mandatory! Highlighted moves in blue must be made.');
+            setMandatoryCaptures(allMandatoryCaptures);
+            // Clear error after 5 seconds
+            if (errorTimeoutRef.current) {
+              clearTimeout(errorTimeoutRef.current);
+            }
+            errorTimeoutRef.current = setTimeout(() => {
+              setError(null);
+              errorTimeoutRef.current = null;
+            }, 5000);
+          } else {
+            console.log('Invalid move - not in legal moves list');
+            setError(`Invalid move - select a highlighted square. Legal moves: ${legalMoves.join(', ')}`);
+            // Clear error after 3 seconds
+            if (errorTimeoutRef.current) {
+              clearTimeout(errorTimeoutRef.current);
+            }
+            errorTimeoutRef.current = setTimeout(() => {
+              setError(null);
+              errorTimeoutRef.current = null;
+            }, 3000);
+          }
         }
       }
     }
@@ -419,7 +500,8 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     const piece = board[index];
     const isSelected = selectedSquare === index;
     const isLegalMove = legalMoves.includes(index);
-    const colorClass = getSquareColor(index, isSelected, isLegalMove);
+    const isMandatoryCapture = mandatoryCaptures.includes(index);
+    const colorClass = getSquareColor(index, isSelected, isLegalMove, isMandatoryCapture);
 
     return (
       <div
@@ -477,7 +559,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           </div>
 
           {error && (
-            <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 text-sm">
+            <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 p-3 bg-red-500/90 border border-red-500 rounded-lg text-red-100 text-sm shadow-2xl max-w-md">
               {error}
             </div>
           )}
