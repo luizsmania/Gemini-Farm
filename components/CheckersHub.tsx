@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { checkersWebSocketService } from '../services/checkersWebSocketService';
 import { ServerMessage, LobbyInfo } from '../types/checkers';
 import { Button } from './Button';
@@ -17,10 +17,9 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
   const [lobbies, setLobbies] = useState<LobbyInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    checkersWebSocketService.connect();
-
     const handleLobbyList = (message: ServerMessage) => {
       if (message.type === 'LOBBY_LIST' && message.lobbies) {
         setLobbies(message.lobbies);
@@ -29,8 +28,13 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
 
     const handleNicknameSet = (message: ServerMessage) => {
       if (message.type === 'NICKNAME_SET' && message.playerId && message.nickname) {
-        setNicknameSet(true);
+        // Clear timeout if it exists
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+          timeoutRef.current = null;
+        }
         setLoading(false);
+        setNicknameSet(true);
         onNicknameSet(message.nickname, message.playerId);
       }
     };
@@ -60,16 +64,42 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
     };
   }, [onGameStart]);
 
-  const handleSetNickname = () => {
+  const handleSetNickname = async () => {
     if (!nickname.trim()) {
       setError('Please enter a nickname');
       return;
     }
 
+    // Clear any existing timeout
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+
     setLoading(true);
     setError(null);
-    checkersWebSocketService.setNickname(nickname.trim());
-    // The nickname will be set when we receive NICKNAME_SET message
+    
+    try {
+      // First ensure connection
+      if (!checkersWebSocketService.isConnected()) {
+        await checkersWebSocketService.connect();
+      }
+      await checkersWebSocketService.setNickname(nickname.trim());
+      // The nickname will be set when we receive NICKNAME_SET message
+      // If no response after 5 seconds, show error
+      timeoutRef.current = setTimeout(() => {
+        setError('Server did not respond. Make sure the WebSocket server is running (npm run server).');
+        setLoading(false);
+        timeoutRef.current = null;
+      }, 5000);
+    } catch (error: any) {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+      const errorMsg = error.message || 'Failed to connect to server';
+      setError(`Connection failed: ${errorMsg}. Run "npm run server" to start the WebSocket server.`);
+      setLoading(false);
+    }
   };
 
   const handleCreateLobby = () => {

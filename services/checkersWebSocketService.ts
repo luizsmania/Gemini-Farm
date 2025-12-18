@@ -10,42 +10,61 @@ class CheckersWebSocketService {
     this.wsUrl = import.meta.env.VITE_WS_URL || 'http://localhost:3001';
   }
 
-  connect(): void {
-    if (this.socket?.connected) return;
+  connect(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (this.socket?.connected) {
+        resolve();
+        return;
+      }
 
-    this.socket = io(this.wsUrl, {
-      transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionAttempts: 5,
-    });
-
-    this.socket.on('connect', () => {
-      console.log('WebSocket connected');
-    });
-
-    this.socket.on('disconnect', () => {
-      console.log('WebSocket disconnected');
-    });
-
-    // Register all message types
-    const messageTypes: Array<ServerMessage['type']> = [
-      'NICKNAME_SET',
-      'LOBBY_LIST',
-      'GAME_START',
-      'MOVE_ACCEPTED',
-      'MOVE_REJECTED',
-      'GAME_OVER',
-      'ERROR',
-      'PLAYER_DISCONNECTED',
-      'REMATCH_REQUEST',
-      'MATCH_ENDED',
-    ];
-
-    messageTypes.forEach((type) => {
-      this.socket?.on(type, (data: any) => {
-        this.emit(type, { type, ...data } as ServerMessage);
+      this.socket = io(this.wsUrl, {
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionDelay: 1000,
+        reconnectionAttempts: 5,
+        timeout: 5000,
       });
+
+      this.socket.on('connect', () => {
+        console.log('WebSocket connected');
+        resolve();
+      });
+
+      this.socket.on('connect_error', (error) => {
+        console.error('WebSocket connection error:', error);
+        reject(error);
+      });
+
+      this.socket.on('disconnect', (reason) => {
+        console.log('WebSocket disconnected:', reason);
+      });
+
+      // Register all message types
+      const messageTypes: Array<ServerMessage['type']> = [
+        'NICKNAME_SET',
+        'LOBBY_LIST',
+        'GAME_START',
+        'MOVE_ACCEPTED',
+        'MOVE_REJECTED',
+        'GAME_OVER',
+        'ERROR',
+        'PLAYER_DISCONNECTED',
+        'REMATCH_REQUEST',
+        'MATCH_ENDED',
+      ];
+
+      messageTypes.forEach((type) => {
+        this.socket?.on(type, (data: any) => {
+          this.emit(type, { type, ...data } as ServerMessage);
+        });
+      });
+
+      // Timeout if connection takes too long
+      setTimeout(() => {
+        if (!this.socket?.connected) {
+          reject(new Error('Connection timeout'));
+        }
+      }, 10000);
     });
   }
 
@@ -88,7 +107,16 @@ class CheckersWebSocketService {
     this.socket.emit(message.type, message);
   }
 
-  setNickname(nickname: string): void {
+  async setNickname(nickname: string): Promise<void> {
+    // Ensure we're connected before sending
+    if (!this.socket?.connected) {
+      try {
+        await this.connect();
+      } catch (error) {
+        console.error('Failed to connect:', error);
+        throw error;
+      }
+    }
     this.send({ type: 'SET_NICKNAME', nickname });
   }
 
