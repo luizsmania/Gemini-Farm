@@ -174,6 +174,22 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     };
   };
 
+  // Convert display index (flipped for black) to board index
+  const displayIndexToBoardIndex = (displayIndex: number): number => {
+    if (yourColor === 'black') {
+      return (BOARD_SIZE * BOARD_SIZE - 1) - displayIndex;
+    }
+    return displayIndex;
+  };
+
+  // Convert board index to display index (flipped for black)
+  const boardIndexToDisplayIndex = (boardIndex: number): number => {
+    if (yourColor === 'black') {
+      return (BOARD_SIZE * BOARD_SIZE - 1) - boardIndex;
+    }
+    return boardIndex;
+  };
+
   // Calculate legal moves for a piece
   const calculateLegalMoves = useCallback((position: number): number[] => {
     const piece = board[position];
@@ -504,25 +520,28 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     onLeave();
   };
 
-  const renderSquare = (index: number) => {
-    const piece = board[index];
-    const isSelected = selectedSquare === index;
-    const isLegalMove = legalMoves.includes(index);
-    const isMandatoryCapture = mandatoryCaptures.includes(index);
+  const renderSquare = (displayIndex: number) => {
+    // Convert display index to board index
+    const boardIndex = displayIndexToBoardIndex(displayIndex);
+    const piece = board[boardIndex];
+    const isSelected = selectedSquare === boardIndex;
+    const isLegalMove = legalMoves.includes(boardIndex);
+    const isMandatoryCapture = mandatoryCaptures.includes(boardIndex);
     // Debug log for mandatory captures
     if (isMandatoryCapture) {
-      console.log('Rendering mandatory capture at index:', index, 'mandatoryCaptures:', mandatoryCaptures);
+      console.log('Rendering mandatory capture at displayIndex:', displayIndex, 'boardIndex:', boardIndex, 'mandatoryCaptures:', mandatoryCaptures);
     }
-    const colorClass = getSquareColor(index, isSelected, isLegalMove, isMandatoryCapture);
+    const colorClass = getSquareColor(boardIndex, isSelected, isLegalMove, isMandatoryCapture);
 
     return (
       <div
-        key={index}
+        key={displayIndex}
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          console.log('Square clicked:', index, 'Piece:', piece, 'Selected:', selectedSquare, 'Legal moves:', legalMoves);
-          handleSquareClick(index);
+          console.log('Square clicked - displayIndex:', displayIndex, 'boardIndex:', boardIndex, 'Piece:', piece, 'Selected:', selectedSquare, 'Legal moves:', legalMoves);
+          // Convert display index back to board index for handling
+          handleSquareClick(boardIndex);
         }}
         className={`${colorClass} aspect-square flex items-center justify-center cursor-pointer transition-all hover:scale-105 border-2 ${
           isSelected ? 'border-yellow-400' : isMandatoryCapture ? 'border-blue-400' : 'border-transparent'
