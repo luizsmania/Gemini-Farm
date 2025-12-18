@@ -198,13 +198,18 @@ export async function getMatchHistory(playerId: string): Promise<Array<{
   finishedAt: Date | null;
 }>> {
   try {
+    console.log('[getMatchHistory] Querying for playerId:', playerId);
+    
     const result = await sql`
       SELECT 
         m.id,
-        CASE 
-          WHEN m.player_red = ${playerId} THEN p2.nickname
-          ELSE p1.nickname
-        END as opponent_nickname,
+        COALESCE(
+          CASE 
+            WHEN m.player_red = ${playerId} THEN p2.nickname
+            ELSE p1.nickname
+          END,
+          'Unknown Player'
+        ) as opponent_nickname,
         CASE 
           WHEN m.player_red = ${playerId} THEN 'black'
           ELSE 'red'
@@ -224,16 +229,20 @@ export async function getMatchHistory(playerId: string): Promise<Array<{
       LIMIT 50
     `;
 
+    console.log('[getMatchHistory] Query returned', result.rows.length, 'rows');
+
     return result.rows.map(row => ({
       id: row.id,
-      opponentNickname: row.opponent_nickname,
+      opponentNickname: row.opponent_nickname || 'Unknown Player',
       opponentColor: row.opponent_color as 'red' | 'black',
       yourColor: row.your_color as 'red' | 'black',
       winner: row.winner,
       finishedAt: row.finished_at,
     }));
-  } catch (error) {
-    console.error('Error getting match history:', error);
+  } catch (error: any) {
+    console.error('[getMatchHistory] Error getting match history:', error);
+    console.error('[getMatchHistory] Error message:', error.message);
+    console.error('[getMatchHistory] Error code:', error.code);
     throw error;
   }
 }

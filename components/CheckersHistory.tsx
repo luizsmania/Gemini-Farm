@@ -25,7 +25,16 @@ export const CheckersHistory: React.FC<CheckersHistoryProps> = ({ playerId, onBa
       
       // Check if response is OK
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        // Try to get error message from response
+        let errorMessage = `HTTP error! status: ${response.status}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch {
+          // If response isn't JSON, use status text
+          errorMessage = response.statusText || errorMessage;
+        }
+        throw new Error(errorMessage);
       }
       
       // Check content type
@@ -38,7 +47,7 @@ export const CheckersHistory: React.FC<CheckersHistoryProps> = ({ playerId, onBa
       const data = await response.json();
 
       if (data.success) {
-        setHistory(data.data);
+        setHistory(data.data || []);
       } else {
         setError(data.error || 'Failed to load history');
       }
