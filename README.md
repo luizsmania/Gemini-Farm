@@ -1,4 +1,4 @@
-# 🌾 Gemini Farm Tycoon
+# 🎮 Online Checkers Game
 
 <div align="center">
 
@@ -8,9 +8,7 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue?logo=typescript)
 ![Vercel](https://img.shields.io/badge/deployed%20on-Vercel-black?logo=vercel)
 
-**🎮 Play the game live:** [https://gemini-farm-umber.vercel.app/](https://gemini-farm-umber.vercel.app/)
-
-*A modern, feature-rich farming tycoon game with real-time multiplayer sync, AI-powered quests, and endless progression!*
+**🎮 A real-time multiplayer Checkers game with authoritative server-side game logic**
 
 </div>
 
@@ -18,83 +16,41 @@
 
 ## 🎯 Overview
 
-**Gemini Farm Tycoon** is an immersive farming simulation game where you build and manage your own agricultural empire. Plant crops, process them into products, complete missions, unlock achievements, and expand your farm across multiple devices with real-time synchronization.
+A production-ready online Checkers game built with **WebSockets**, **PostgreSQL**, and **React**. The server is authoritative, meaning all game logic runs server-side to prevent cheating and ensure fair play.
 
 ### ✨ Key Features
 
-- 🌱 **6 Unique Crops** - From wheat to the mystical Gemini Fruit
-- 🏭 **Processing Buildings** - Windmills, Bakeries, and more to create valuable products
-- 🎯 **Mission System** - Complete quests to earn rewards and unlock new content
-- 🏆 **Achievements** - Track your progress with dozens of achievements
-- 🌦️ **Dynamic Weather** - Sunny, rainy, and drought conditions affect your farm
-- 🍂 **Seasonal System** - Spring, Summer, Autumn, and Winter with seasonal bonuses
-- 💰 **Market Trends** - AI-powered market analysis for optimal selling times
-- 🔄 **Real-Time Sync** - Play on multiple devices with instant synchronization via WebSocket
-- 📱 **Mobile Optimized** - Beautiful, responsive design for mobile and desktop
-- 🎨 **Customization** - Decorate your farm with various decorations
-- ⚡ **Prestige System** - Reset and gain permanent bonuses
-- 🌟 **Crop Mastery** - Level up individual crops for bonus rewards
-- 🤖 **AI Merchant** - Negotiate trades with an AI-powered merchant
+- 🎯 **Real-Time Multiplayer** - Play against opponents via WebSockets
+- 🔒 **Authoritative Server** - All game logic validated server-side
+- 💾 **Persistent Matches** - Game history stored in PostgreSQL
+- 🎮 **Standard Checkers Rules** - Mandatory captures, multi-jumps, king promotion
+- 📊 **Match History** - View your past games and results
+- ⚡ **Lobby System** - Create or join lobbies (max 2 players)
+- 🔄 **Auto-Start** - Games begin automatically when 2 players join
+- ⏱️ **Disconnect Handling** - 30-second forfeit timer
+- 🔁 **Rematch System** - Play again with the same opponent
 
 ---
 
-## 🎮 Game Systems
+## 🎮 Game Rules
 
-### 🌾 Farming System
+The server enforces standard Checkers rules:
 
-- **6 Crops**: Wheat 🌾, Corn 🌽, Carrot 🥕, Tomato 🍅, Pumpkin 🎃, Gemini Fruit ✨
-- **Growth Times**: From 3 seconds (Wheat) to 2 minutes (Gemini Fruit)
-- **Season Affinity**: Each crop grows better in specific seasons
-- **Watering System**: Water crops manually or use sprinklers for automation
-- **Drag to Plant**: Click and drag to plant/harvest/water multiple plots at once
-
-### 🏭 Production System
-
-- **6 Processing Buildings**: Windmill, Bakery, Popcorn Machine, Ketchup Factory, Pie Oven, Star Jam Maker
-- **Recipe System**: Combine crops to create valuable products
-- **Processing Time**: Each product takes time to process
-- **Profit Multiplier**: Processed products sell for significantly more than raw crops
-
-### 💰 Economy System
-
-- **Dynamic Pricing**: Market trends affect crop prices
-- **AI Market Analyst**: Get predictions on which crops will be "hot" next
-- **Combo System**: Chain harvests for bonus multipliers
-- **Prestige Points**: Earn permanent bonuses through prestige resets
-
-### 🎯 Progression Systems
-
-#### Missions
-- **Tiered Missions**: Complete missions to unlock the next tier
-- **Mission Types**: Harvest, Sell, Level Up, Build, Earn, Collect
-- **Rewards**: Coins and XP for completing missions
-
-#### Achievements
-- **Unlockable Achievements**: Complete various milestones
-- **Categories**: Harvesting, Building, Earning, Leveling, and more
-- **Permanent Tracking**: Your achievements are saved permanently
-
-#### Daily Challenges
-- **Daily Reset**: New challenge every 24 hours
-- **Bonus Multiplier**: Complete challenges for temporary bonuses
-- **Progress Tracking**: Visual progress bars for all challenges
-
-### 🌟 Advanced Features
-
-#### Prestige System
-- **Reset at Level 20+**: Prestige to gain permanent bonuses
-- **Prestige Points**: Spend points on permanent upgrades
-- **Multiplier Stacking**: Each prestige level adds more power
-
-#### Crop Mastery
-- **Individual Crop Levels**: Level up each crop type separately
-- **Mastery Bonuses**: Higher mastery = better yields and XP
-- **Visual Indicators**: See mastery levels for each crop
-
-#### Research Tree
-- **6 Research Nodes**: Unlock powerful upgrades
-- **Categories**: Efficiency, Automation, Mastery, Prestige
-- **Prestige Points Cost**: Spend prestige points to unlock research
+1. **Turn Order**: Red moves first, then alternates
+2. **Movement**: 
+   - Regular pieces move diagonally forward only
+   - Kings move diagonally in any direction
+   - One square for regular moves, two squares for captures
+3. **Captures**:
+   - Mandatory if available
+   - Must capture opponent pieces
+   - Multi-jump enforcement (must continue if possible)
+4. **King Promotion**: 
+   - Red pieces promoted on row 0
+   - Black pieces promoted on row 7
+5. **Win Conditions**:
+   - Opponent has no pieces
+   - Opponent has no legal moves
 
 ---
 
@@ -105,22 +61,17 @@
 - **TypeScript** - Type-safe development
 - **Tailwind CSS** - Utility-first styling
 - **Vite** - Fast build tool
-- **Lucide React** - Beautiful icons
+- **Socket.IO Client** - WebSocket communication
 
 ### Backend
-- **Vercel Serverless Functions** - API endpoints
-- **PostgreSQL** (Vercel Postgres) - User data and game state storage
-- **WebSocket Server** (Railway) - Real-time synchronization
-- **Socket.io** - WebSocket communication
-
-### AI Integration
-- **Google Gemini API** - AI-powered market trends and quest generation
-- **Dynamic Quest System** - AI generates unique quests based on player level
-- **Market Analysis** - AI predicts market trends
+- **Node.js** - WebSocket server
+- **Socket.IO** - Real-time communication
+- **PostgreSQL** (Vercel Postgres) - Match and player data storage
+- **TypeScript** - Server-side type safety
 
 ### Deployment
 - **Vercel** - Frontend and API hosting
-- **Railway** - WebSocket server hosting
+- **Railway/Render/Fly.io** - WebSocket server hosting
 
 ---
 
@@ -129,161 +80,113 @@
 ### Prerequisites
 
 - Node.js 18+ and npm
-- Vercel account (for deployment)
-- Railway account (for WebSocket server)
-- Google Gemini API key (for AI features)
+- PostgreSQL database (Vercel Postgres or local)
+- Railway/Render/Fly.io account (for WebSocket server)
 
 ### Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/gemini-farm-tycoon.git
-cd gemini-farm-tycoon
+git clone <repository-url>
+cd Gemini-Farm-3
 
 # Install dependencies
 npm install
 
-# Set up environment variables
-cp .env.example .env
-# Edit .env with your API keys
-
-# Run development server
-npm run dev
+# Set up environment variables (see below)
 ```
 
 ### Environment Variables
 
+#### Frontend (Vercel)
 ```env
-VITE_GEMINI_API_KEY=your_gemini_api_key
-VITE_WS_URL=your_websocket_server_url
-POSTGRES_URL=your_postgres_connection_string
+VITE_WS_URL=wss://your-websocket-server.railway.app
+POSTGRES_URL=postgresql://... (auto-added by Vercel)
+```
+
+#### WebSocket Server (Railway/Render)
+```env
+PORT=3001
+CLIENT_URL=https://your-vercel-app.vercel.app
+POSTGRES_URL=postgresql://... (same as frontend)
+```
+
+### Development
+
+1. **Start WebSocket server**:
+   ```bash
+   npm run server
+   # Or: npx tsx server.js
+   ```
+
+2. **Start frontend**:
+   ```bash
+   npm run dev
+   ```
+
+### Production Deployment
+
+See [CHECKERS_README.md](./CHECKERS_README.md) for detailed deployment instructions.
+
+---
+
+## 📁 Project Structure
+
+```
+├── api/
+│   ├── database.ts          # Database schema and operations
+│   └── match-history.ts     # Match history API endpoint
+├── components/
+│   ├── CheckersHub.tsx      # Lobby/hub screen
+│   ├── CheckersGame.tsx     # Game board component
+│   ├── CheckersHistory.tsx  # Match history component
+│   └── Button.tsx           # Reusable button component
+├── server/
+│   └── checkersEngine.ts    # Authoritative game logic
+├── services/
+│   └── checkersWebSocketService.ts  # WebSocket client service
+├── types/
+│   └── checkers.ts          # TypeScript type definitions
+├── server.js                # WebSocket server
+└── App.tsx                  # Main app component
 ```
 
 ---
 
-## 🎨 Game Screenshots
+## 🎯 How It Works
 
-### Main Farm View
-```
-🌾 Plant crops on your 6x6 grid farm
-💧 Water crops manually or use sprinklers
-🏭 Build processing buildings to create products
-🎨 Decorate with various decorations
-```
-
-### Shop & Market
-```
-🛒 Buy seeds, buildings, and decorations
-📈 View market trends and AI predictions
-💰 Sell crops and products at optimal prices
-```
-
-### Missions & Achievements
-```
-🎯 Complete tiered missions for rewards
-🏆 Unlock achievements as you progress
-📅 Complete daily challenges for bonuses
-```
+1. **Player joins** with nickname only (no authentication required)
+2. **Lobby system** - Players create or join lobbies (max 2 players)
+3. **Game starts** automatically when 2 players join
+4. **Moves validated** server-side - all game logic runs on server
+5. **Real-time sync** - Both players see moves instantly via WebSockets
+6. **Match persisted** - All moves saved to PostgreSQL
+7. **Game ends** - Winner determined, match stored in history
 
 ---
 
-## 🎮 How to Play
+## 📚 Documentation
 
-1. **Create Account** - Register with a username and password
-2. **Start Farming** - Plant your first wheat seeds
-3. **Harvest & Sell** - Harvest crops and sell them for coins
-4. **Expand** - Buy more plots and unlock new crops
-5. **Build** - Construct processing buildings to create products
-6. **Complete Missions** - Finish missions to unlock new content
-7. **Level Up** - Gain XP to unlock new crops and buildings
-8. **Prestige** - Reset at level 20+ for permanent bonuses
-9. **Master Crops** - Level up individual crops for better yields
-10. **Sync Across Devices** - Play on multiple devices with real-time sync!
+- [CHECKERS_README.md](./CHECKERS_README.md) - Detailed implementation guide
+- [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) - Deployment instructions
 
 ---
 
-## 🌐 Multi-Device Sync
+## 🔧 Development Notes
 
-The game features **real-time synchronization** across all your devices:
-
-- ✅ **Instant Updates** - Changes sync immediately via WebSocket
-- ✅ **Conflict Resolution** - Version tracking prevents data loss
-- ✅ **Offline Support** - Play offline, sync when online
-- ✅ **Secure Storage** - All data stored in PostgreSQL database
+- The server file (`server.js`) uses TypeScript syntax and requires `tsx` to run
+- Database schema initializes automatically on server start
+- All game logic is server-authoritative (client is presentation-only)
+- Lobbies are stored in-memory, matches are persisted to database
 
 ---
 
-## 📱 Mobile Experience
+## 📝 License
 
-- **Touch-Optimized** - Drag to plant/harvest/water multiple plots
-- **Responsive Design** - Beautiful UI on all screen sizes
-- **PWA Support** - Install as an app on your device
-- **Fast Performance** - Optimized for mobile devices
-
----
-
-## 🔐 Security Features
-
-- **Password Hashing** - SHA-256 with salt
-- **Session Management** - Secure authentication
-- **SQL Injection Protection** - Parameterized queries
-- **XSS Protection** - Input sanitization
-
----
-
-## 🎯 Roadmap
-
-- [ ] More crop varieties
-- [ ] Additional processing buildings
-- [ ] Multiplayer features
-- [ ] Leaderboards
-- [ ] More decorations
-- [ ] Advanced weather effects
-- [ ] Trading system between players
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+MIT
 
 ---
 
 ## 🙏 Acknowledgments
 
-- **Google Gemini** - For AI-powered quest and market trend generation
-- **Vercel** - For hosting and serverless functions
-- **Railway** - For WebSocket server hosting
-- **React & TypeScript** - For the amazing development experience
-
----
-
-## 📞 Support
-
-If you encounter any issues or have questions:
-
-- 🐛 **Report Bugs**: Open an issue on GitHub
-- 💡 **Suggest Features**: Submit a feature request
-- 📧 **Contact**: Reach out via GitHub issues
-
----
-
-<div align="center">
-
-**Made with ❤️ using React, TypeScript, and AI**
-
-[🎮 Play Now](https://gemini-farm-umber.vercel.app/) | [📖 Documentation](#) | [🐛 Report Bug](#)
-
-</div>
+Built with modern web technologies for a production-ready multiplayer gaming experience.

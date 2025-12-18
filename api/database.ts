@@ -1,50 +1,56 @@
 import { sql } from '@vercel/postgres';
-import crypto from 'crypto';
 
 // Database schema initialization
 export async function initDatabase() {
   try {
-    // Create users table
+    // Create players table (nickname only, no auth)
     await sql`
-      CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        username VARCHAR(50) UNIQUE NOT NULL,
-        username_lower VARCHAR(50) UNIQUE NOT NULL,
-        password_hash VARCHAR(255) NOT NULL,
-        is_admin BOOLEAN NOT NULL DEFAULT FALSE,
-        created_at BIGINT NOT NULL,
-        last_login_at BIGINT,
-        updated_at BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT * 1000
+      CREATE TABLE IF NOT EXISTS players (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        nickname TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
       )
     `;
-    
-    // Add is_admin column if it doesn't exist (for existing databases)
+
+    // Create matches table
     await sql`
-      ALTER TABLE users 
-      ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE
+      CREATE TABLE IF NOT EXISTS matches (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        player_red UUID REFERENCES players(id) ON DELETE SET NULL,
+        player_black UUID REFERENCES players(id) ON DELETE SET NULL,
+        winner UUID REFERENCES players(id) ON DELETE SET NULL,
+        finished_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
     `;
 
-    // Create game_states table
+    // Create moves table
     await sql`
-      CREATE TABLE IF NOT EXISTS game_states (
+      CREATE TABLE IF NOT EXISTS moves (
         id SERIAL PRIMARY KEY,
-        username_lower VARCHAR(50) UNIQUE NOT NULL REFERENCES users(username_lower) ON DELETE CASCADE,
-        game_state JSONB NOT NULL,
-        last_saved BIGINT NOT NULL,
-        updated_at BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT * 1000,
-        version INTEGER NOT NULL DEFAULT 1
+        match_id UUID NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+        move_number INT NOT NULL,
+        from_pos INT NOT NULL,
+        to_pos INT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
       )
     `;
 
     // Create indexes for better performance
     await sql`
-      CREATE INDEX IF NOT EXISTS idx_users_username_lower ON users(username_lower)
+      CREATE INDEX IF NOT EXISTS idx_players_nickname ON players(nickname)
     `;
     await sql`
-      CREATE INDEX IF NOT EXISTS idx_game_states_username_lower ON game_states(username_lower)
+      CREATE INDEX IF NOT EXISTS idx_matches_player_red ON matches(player_red)
     `;
     await sql`
-      CREATE INDEX IF NOT EXISTS idx_game_states_updated_at ON game_states(updated_at)
+      CREATE INDEX IF NOT EXISTS idx_matches_player_black ON matches(player_black)
+    `;
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_matches_finished_at ON matches(finished_at)
+    `;
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_moves_match_id ON moves(match_id)
     `;
 
     console.log('Database initialized successfully');
@@ -54,64 +60,58 @@ export async function initDatabase() {
   }
 }
 
-// User operations
-export interface StoredUser {
-  username: string;
-  passwordHash: string;
-  isAdmin: boolean;
-  createdAt: number;
-  lastLoginAt?: number;
+// Checkers game database operations
+
+export interface Player {
+  id: string;
+  nickname: string;
+  createdAt: Date;
 }
 
-export async function createUser(username: string, passwordHash: string, isAdmin: boolean = false): Promise<StoredUser> {
-  const now = Date.now();
-  const usernameLower = username.trim().toLowerCase();
-  
-  try {
-    // Use INSERT with ON CONFLICT to handle race conditions
-    // Return the inserted row to verify it was actually created
-    const result = await sql`
-      INSERT INTO users (username, username_lower, password_hash, is_admin, created_at, last_login_at)
-      VALUES (${username.trim()}, ${usernameLower}, ${passwordHash}, ${isAdmin}, ${now}, ${now})
-      ON CONFLICT (username_lower) DO NOTHING
-      RETURNING username, password_hash, is_admin, created_at, last_login_at
-    `;
+export interface Match {
+  id: string;
+  playerRed: string | null;
+  playerBlack: string | null;
+  winner: string | null;
+  finishedAt: Date | null;
+  createdAt: Date;
+}
 
-    // If no row was returned, the username already exists (race condition or duplicate)
-    if (result.rows.length === 0) {
-      throw new Error('USERNAME_EXISTS');
-    }
+export interface Move {
+  id: number;
+  matchId: string;
+  moveNumber: number;
+  fromPos: number;
+  toPos: number;
+  createdAt: Date;
+}
+
+export async function createPlayer(nickname: string): Promise<Player> {
+  try {
+    const result = await sql`
+      INSERT INTO players (nickname)
+      VALUES (${nickname})
+      RETURNING id, nickname, created_at
+    `;
 
     const row = result.rows[0];
     return {
-      username: row.username,
-      passwordHash: row.password_hash,
-      isAdmin: row.is_admin || false,
-      createdAt: parseInt(row.created_at),
-      lastLoginAt: row.last_login_at ? parseInt(row.last_login_at) : now,
+      id: row.id,
+      nickname: row.nickname,
+      createdAt: row.created_at,
     };
-  } catch (error: any) {
-    // Re-throw our custom error
-    if (error.message === 'USERNAME_EXISTS') {
-      throw error;
-    }
-    // Check for PostgreSQL unique constraint violation
-    if (error?.code === '23505') {
-      throw new Error('USERNAME_EXISTS');
-    }
-    console.error('Error creating user:', error);
+  } catch (error) {
+    console.error('Error creating player:', error);
     throw error;
   }
 }
 
-export async function getUserByUsername(username: string): Promise<StoredUser | null> {
-  const usernameLower = username.trim().toLowerCase();
-  
+export async function getPlayerById(id: string): Promise<Player | null> {
   try {
     const result = await sql`
-      SELECT username, password_hash, is_admin, created_at, last_login_at
-      FROM users
-      WHERE username_lower = ${usernameLower}
+      SELECT id, nickname, created_at
+      FROM players
+      WHERE id = ${id}
     `;
 
     if (result.rows.length === 0) {
@@ -120,169 +120,121 @@ export async function getUserByUsername(username: string): Promise<StoredUser | 
 
     const row = result.rows[0];
     return {
-      username: row.username,
-      passwordHash: row.password_hash,
-      isAdmin: row.is_admin || false,
-      createdAt: parseInt(row.created_at),
-      lastLoginAt: row.last_login_at ? parseInt(row.last_login_at) : undefined,
+      id: row.id,
+      nickname: row.nickname,
+      createdAt: row.created_at,
     };
   } catch (error) {
-    console.error('Error getting user:', error);
+    console.error('Error getting player:', error);
     throw error;
   }
 }
 
-export async function updateUserLastLogin(username: string): Promise<void> {
-  const usernameLower = username.trim().toLowerCase();
-  const now = Date.now();
-  
+export async function createMatch(playerRed: string, playerBlack: string): Promise<Match> {
+  try {
+    const result = await sql`
+      INSERT INTO matches (player_red, player_black)
+      VALUES (${playerRed}, ${playerBlack})
+      RETURNING id, player_red, player_black, winner, finished_at, created_at
+    `;
+
+    const row = result.rows[0];
+    return {
+      id: row.id,
+      playerRed: row.player_red,
+      playerBlack: row.player_black,
+      winner: row.winner,
+      finishedAt: row.finished_at,
+      createdAt: row.created_at,
+    };
+  } catch (error) {
+    console.error('Error creating match:', error);
+    throw error;
+  }
+}
+
+export async function finishMatch(matchId: string, winnerId: string): Promise<void> {
   try {
     await sql`
-      UPDATE users
-      SET last_login_at = ${now}, updated_at = ${now}
-      WHERE username_lower = ${usernameLower}
+      UPDATE matches
+      SET winner = ${winnerId}, finished_at = NOW()
+      WHERE id = ${matchId}
     `;
   } catch (error) {
-    console.error('Error updating last login:', error);
+    console.error('Error finishing match:', error);
     throw error;
   }
 }
 
-export async function usernameExists(username: string): Promise<boolean> {
-  const usernameLower = username.trim().toLowerCase();
-  
+export async function addMove(matchId: string, moveNumber: number, fromPos: number, toPos: number): Promise<Move> {
   try {
     const result = await sql`
-      SELECT 1 FROM users WHERE username_lower = ${usernameLower} LIMIT 1
+      INSERT INTO moves (match_id, move_number, from_pos, to_pos)
+      VALUES (${matchId}, ${moveNumber}, ${fromPos}, ${toPos})
+      RETURNING id, match_id, move_number, from_pos, to_pos, created_at
     `;
-    const exists = result.rows.length > 0;
-    console.log(`Username check: "${username}" (normalized: "${usernameLower}") exists: ${exists}`);
-    return exists;
-  } catch (error) {
-    console.error('Error checking username:', error);
-    // On error, return false but log it - this might indicate database connection issues
-    throw error; // Re-throw to let caller handle it
-  }
-}
-
-// Game state operations
-export async function saveGameState(username: string, gameState: any): Promise<void> {
-  const usernameLower = username.trim().toLowerCase();
-  const now = Date.now();
-  
-  try {
-    await sql`
-      INSERT INTO game_states (username_lower, game_state, last_saved, updated_at, version)
-      VALUES (${usernameLower}, ${JSON.stringify(gameState)}::jsonb, ${now}, ${now}, 1)
-      ON CONFLICT (username_lower) 
-      DO UPDATE SET 
-        game_state = ${JSON.stringify(gameState)}::jsonb,
-        last_saved = ${now},
-        updated_at = ${now},
-        version = game_states.version + 1
-    `;
-  } catch (error) {
-    console.error('Error saving game state:', error);
-    throw error;
-  }
-}
-
-export async function loadGameState(username: string): Promise<any | null> {
-  const usernameLower = username.trim().toLowerCase();
-  
-  try {
-    const result = await sql`
-      SELECT game_state, last_saved, updated_at, version
-      FROM game_states
-      WHERE username_lower = ${usernameLower}
-    `;
-
-    if (result.rows.length === 0) {
-      return null;
-    }
 
     const row = result.rows[0];
     return {
-      gameState: row.game_state,
-      lastSaved: parseInt(row.last_saved),
-      updatedAt: parseInt(row.updated_at),
-      version: parseInt(row.version),
+      id: row.id,
+      matchId: row.match_id,
+      moveNumber: row.move_number,
+      fromPos: row.from_pos,
+      toPos: row.to_pos,
+      createdAt: row.created_at,
     };
   } catch (error) {
-    console.error('Error loading game state:', error);
+    console.error('Error adding move:', error);
     throw error;
   }
 }
 
-export async function getGameStateMetadata(username: string): Promise<{ lastSaved: number; updatedAt: number; version: number } | null> {
-  const usernameLower = username.trim().toLowerCase();
-  
+export async function getMatchHistory(playerId: string): Promise<Array<{
+  id: string;
+  opponentNickname: string;
+  opponentColor: 'red' | 'black';
+  yourColor: 'red' | 'black';
+  winner: string | null;
+  finishedAt: Date | null;
+}>> {
   try {
     const result = await sql`
-      SELECT last_saved, updated_at, version
-      FROM game_states
-      WHERE username_lower = ${usernameLower}
+      SELECT 
+        m.id,
+        CASE 
+          WHEN m.player_red = ${playerId} THEN p2.nickname
+          ELSE p1.nickname
+        END as opponent_nickname,
+        CASE 
+          WHEN m.player_red = ${playerId} THEN 'black'
+          ELSE 'red'
+        END as opponent_color,
+        CASE 
+          WHEN m.player_red = ${playerId} THEN 'red'
+          ELSE 'black'
+        END as your_color,
+        m.winner,
+        m.finished_at
+      FROM matches m
+      LEFT JOIN players p1 ON m.player_red = p1.id
+      LEFT JOIN players p2 ON m.player_black = p2.id
+      WHERE (m.player_red = ${playerId} OR m.player_black = ${playerId})
+        AND m.finished_at IS NOT NULL
+      ORDER BY m.finished_at DESC
+      LIMIT 50
     `;
 
-    if (result.rows.length === 0) {
-      return null;
-    }
-
-    const row = result.rows[0];
-    return {
-      lastSaved: parseInt(row.last_saved),
-      updatedAt: parseInt(row.updated_at),
-      version: parseInt(row.version),
-    };
-  } catch (error) {
-    console.error('Error getting game state metadata:', error);
-    return null;
-  }
-}
-
-// Admin operations
-export async function getAllUsers(): Promise<Array<{ username: string; isAdmin: boolean; createdAt: number; lastLoginAt?: number }>> {
-  try {
-    const result = await sql`
-      SELECT username, is_admin, created_at, last_login_at
-      FROM users
-      ORDER BY created_at DESC
-    `;
-    
     return result.rows.map(row => ({
-      username: row.username,
-      isAdmin: row.is_admin || false,
-      createdAt: parseInt(row.created_at),
-      lastLoginAt: row.last_login_at ? parseInt(row.last_login_at) : undefined,
+      id: row.id,
+      opponentNickname: row.opponent_nickname,
+      opponentColor: row.opponent_color as 'red' | 'black',
+      yourColor: row.your_color as 'red' | 'black',
+      winner: row.winner,
+      finishedAt: row.finished_at,
     }));
   } catch (error) {
-    console.error('Error getting all users:', error);
+    console.error('Error getting match history:', error);
     throw error;
   }
-}
-
-export async function updateUserAdminStatus(username: string, isAdmin: boolean): Promise<void> {
-  const usernameLower = username.trim().toLowerCase();
-  const now = Date.now();
-  
-  try {
-    await sql`
-      UPDATE users
-      SET is_admin = ${isAdmin}, updated_at = ${now}
-      WHERE username_lower = ${usernameLower}
-    `;
-  } catch (error) {
-    console.error('Error updating user admin status:', error);
-    throw error;
-  }
-}
-
-export async function updateUserGameState(username: string, gameState: any): Promise<void> {
-  await saveGameState(username, gameState);
-}
-
-// Password hashing
-export function hashPassword(password: string): string {
-  return crypto.createHash('sha256').update(password + '_salt_gemini').digest('hex');
 }
 

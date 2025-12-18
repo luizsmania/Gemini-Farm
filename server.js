@@ -1,23 +1,19 @@
 /**
- * WebSocket Server for Gemini Farm
+ * WebSocket Server for Online Checkers Game
  * 
- * This is a standalone WebSocket server that can be deployed separately.
+ * Authoritative server - all game logic runs here
  * 
  * Deployment Options:
- * - Railway: https://railway.app (Recommended - easy setup)
+ * - Railway: https://railway.app
  * - Render: https://render.com
  * - Fly.io: https://fly.io
- * - DigitalOcean App Platform: https://www.digitalocean.com/products/app-platform
- * 
- * Setup:
- * 1. Install dependencies: npm install socket.io
- * 2. Set environment variables (see below)
- * 3. Deploy to one of the platforms above
- * 4. Set VITE_WS_URL in your Vercel project to point to this server
  */
 
 import { Server } from 'socket.io';
 import http from 'http';
+import { createInitialBoard, validateMove, applyMove, canContinueJump, checkGameOver } from './server/checkersEngine.js';
+import { initDatabase, createMatch, finishMatch, addMove, getPlayerById, createPlayer, getMatchHistory } from './api/database.js';
+import { GameState, Lobby, ClientMessage, ServerMessage } from './types/checkers.js';
 
 // Create HTTP server
 const httpServer = http.createServer();
@@ -32,201 +28,451 @@ const io = new Server(httpServer, {
   transports: ['websocket', 'polling'],
 });
 
-// Store active connections per user
-const userRooms = new Map();
+// In-memory game state
+const lobbies = new Map<string, Lobby>();
+const activeGames = new Map<string, GameState>();
+const playerToGame = new Map<string, string>(); // playerId -> matchId
+const playerDisconnectTimers = new Map<string, NodeJS.Timeout>();
+const rematchRequests = new Map<string, Set<string>>(); // matchId -> Set of playerIds who requested rematch
 
-io.on('connection', async (socket) => {
+// Clean up lobby after a delay (in case of errors)
+function cleanupLobby(lobbyId: string) {
+  setTimeout(() => {
+    if (lobbies.has(lobbyId)) {
+      const lobby = lobbies.get(lobbyId)!;
+      if (lobby.players.length === 0) {
+        lobbies.delete(lobbyId);
+        broadcastLobbyList();
+      }
+    }
+  }, 1000);
+}
+
+// Broadcast lobby list to all connected clients
+function broadcastLobbyList() {
+  const lobbyList = Array.from(lobbies.values())
+    .filter(lobby => lobby.players.length < lobby.maxPlayers)
+    .map(lobby => ({
+      id: lobby.id,
+      playerCount: lobby.players.length,
+      maxPlayers: lobby.maxPlayers,
+    }));
+  
+  io.emit('LOBBY_LIST', { type: 'LOBBY_LIST', lobbies: lobbyList } as ServerMessage);
+}
+
+// Start a new game
+async function startGame(lobby: Lobby) {
+  if (lobby.players.length !== 2) return;
+  
+  const [playerRed, playerBlack] = lobby.players;
+  
+  try {
+    // Create match in database (returns match with UUID)
+    const match = await createMatch(playerRed, playerBlack);
+    const matchId = match.id;
+    
+    const board = createInitialBoard();
+    const gameState: GameState = {
+      matchId,
+      board,
+      currentTurn: 'red',
+      playerRed,
+      playerBlack,
+      winner: null,
+      lastMove: null,
+      canContinueJump: false,
+      continueJumpFrom: null,
+      moveCount: 0,
+    };
+    
+    activeGames.set(matchId, gameState);
+    playerToGame.set(playerRed, matchId);
+    playerToGame.set(playerBlack, matchId);
+    
+    // Remove lobby
+    lobbies.delete(lobby.id);
+    broadcastLobbyList();
+    
+    // Join match room for both players
+    io.to(`player:${playerRed}`).socketsJoin(`match:${matchId}`);
+    io.to(`player:${playerBlack}`).socketsJoin(`match:${matchId}`);
+    
+    // Notify players
+    io.to(`player:${playerRed}`).emit('GAME_START', {
+      type: 'GAME_START',
+      matchId,
+      yourColor: 'red',
+      board,
+    } as ServerMessage);
+    
+    io.to(`player:${playerBlack}`).emit('GAME_START', {
+      type: 'GAME_START',
+      matchId,
+      yourColor: 'black',
+      board,
+    } as ServerMessage);
+    
+    console.log(`Game started: ${matchId}, Red: ${playerRed}, Black: ${playerBlack}`);
+  } catch (error) {
+    console.error('Error starting game:', error);
+  }
+}
+
+// Handle player disconnect
+function handleDisconnect(playerId: string) {
+  const matchId = playerToGame.get(playerId);
+  if (!matchId) return;
+  
+  const game = activeGames.get(matchId);
+  if (!game || game.winner !== null) return; // Game already ended
+  
+  // Set 30 second timer
+  console.log(`Player ${playerId} disconnected, starting 30s forfeit timer`);
+  
+  const timer = setTimeout(async () => {
+    // Forfeit game
+    const winnerId = playerId === game.playerRed ? game.playerBlack : game.playerRed;
+    const winnerColor: 'red' | 'black' = playerId === game.playerRed ? 'black' : 'red';
+    
+    game.winner = winnerColor;
+    
+    try {
+      await finishMatch(matchId, winnerId);
+    } catch (error) {
+      console.error('Error finishing match:', error);
+    }
+    
+    // Notify players
+    io.to(`match:${matchId}`).emit('GAME_OVER', {
+      type: 'GAME_OVER',
+      winner: winnerColor,
+    } as ServerMessage);
+    
+    // Cleanup
+    activeGames.delete(matchId);
+    playerToGame.delete(game.playerRed);
+    playerToGame.delete(game.playerBlack);
+    playerDisconnectTimers.delete(playerId);
+    
+    console.log(`Game ${matchId} forfeited by ${playerId}`);
+  }, 30000); // 30 seconds
+  
+  playerDisconnectTimers.set(playerId, timer);
+  
+  // Notify other player
+  const otherPlayerId = playerId === game.playerRed ? game.playerBlack : game.playerRed;
+  io.to(`player:${otherPlayerId}`).emit('PLAYER_DISCONNECTED', {
+    type: 'PLAYER_DISCONNECTED',
+    message: 'Opponent disconnected. Game will end in 30 seconds if they don\'t return.',
+  } as ServerMessage);
+}
+
+// Handle player reconnect
+function handleReconnect(playerId: string) {
+  const timer = playerDisconnectTimers.get(playerId);
+  if (timer) {
+    clearTimeout(timer);
+    playerDisconnectTimers.delete(playerId);
+    
+    const matchId = playerToGame.get(playerId);
+    if (matchId) {
+      const game = activeGames.get(matchId);
+      if (game) {
+        // Notify other player
+        const otherPlayerId = playerId === game.playerRed ? game.playerBlack : game.playerRed;
+        io.to(`player:${otherPlayerId}`).emit('PLAYER_DISCONNECTED', {
+          type: 'PLAYER_DISCONNECTED',
+          message: 'Opponent reconnected.',
+        } as ServerMessage);
+      }
+    }
+  }
+}
+
+io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
-
-  socket.on('authenticate', async ({ username }) => {
+  
+  let currentPlayerId: string | null = null;
+  let currentNickname: string | null = null;
+  
+  // Set nickname and create/get player
+  socket.on('SET_NICKNAME', async (message: ClientMessage) => {
     try {
-      // Verify user exists (you can add more validation here)
-      if (!username) {
-        socket.emit('authenticated', { success: false, message: 'Username required' });
+      if (!message.nickname || message.nickname.trim().length === 0) {
+        socket.emit('ERROR', { type: 'ERROR', message: 'Nickname is required' } as ServerMessage);
         return;
       }
-
-      // Store username in socket data
-      socket.data.username = username;
       
-      // Join user-specific room for multi-device sync
-      const roomName = `user:${username}`;
-      socket.join(roomName);
+      const nickname = message.nickname.trim();
       
-      // Track active connections
-      if (!userRooms.has(username)) {
-        userRooms.set(username, new Set());
-      }
-      userRooms.get(username).add(socket.id);
-
-      console.log(`User ${username} authenticated, socket: ${socket.id}`);
-      socket.emit('authenticated', { success: true, message: 'Authenticated successfully' });
-
-      // Send current game state to newly connected device
-      try {
-        const apiUrl = process.env.API_URL || process.env.VERCEL_URL || 'https://your-app.vercel.app';
-        const response = await fetch(`${apiUrl}/api/load?username=${encodeURIComponent(username)}`, {
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
-        if (response.ok) {
-          const result = await response.json();
-          if (result.success && result.data) {
-            const { metadata, ...gameState } = result.data;
-            socket.emit('gameStateUpdate', {
-              username,
-              gameState,
-              version: metadata?.version || 0,
-            });
-          }
-        }
-      } catch (error) {
-        console.error('Error loading game state for new connection:', error);
-      }
+      // Create player in database (or get existing if needed)
+      // For simplicity, we'll create a new player entry each time
+      // In production, you might want to check for existing players by nickname
+      const player = await createPlayer(nickname);
+      currentPlayerId = player.id;
+      currentNickname = nickname;
+      
+      // Join player-specific room
+      socket.join(`player:${currentPlayerId}`);
+      
+      console.log(`Player ${currentNickname} (${currentPlayerId}) connected`);
+      
+      // Send player ID back to client
+      socket.emit('NICKNAME_SET', {
+        type: 'NICKNAME_SET',
+        playerId: currentPlayerId,
+        nickname: currentNickname,
+      });
+      
+      // Send lobby list
+      broadcastLobbyList();
     } catch (error) {
-      console.error('Authentication error:', error);
-      socket.emit('authenticated', { success: false, message: 'Authentication failed' });
+      console.error('Error setting nickname:', error);
+      socket.emit('ERROR', { type: 'ERROR', message: 'Failed to set nickname' } as ServerMessage);
     }
   });
-
-  socket.on('gameStateUpdate', async (data) => {
-    try {
-      const { username, gameState, version } = data;
-      
-      if (!username || !gameState) {
-        console.error('Invalid game state update:', data);
-        return;
-      }
-
-      // Verify socket is authenticated
-      if (socket.data.username !== username) {
-        console.error('Unauthorized game state update attempt');
-        return;
-      }
-
-      console.log(`Received game state update from ${username}, version: ${version}`);
-
-      // Save to database via API
-      try {
-        const apiUrl = process.env.API_URL || process.env.VERCEL_URL || 'https://gemini-farm-umber.vercel.app';
-        console.log(`Saving game state for ${username} via API: ${apiUrl}/api/save`);
-        
-        const response = await fetch(`${apiUrl}/api/save`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, gameState }),
-        });
-        
-        if (response.ok) {
-          const saveResult = await response.json();
-          console.log(`Save result for ${username}:`, saveResult);
-          
-          if (saveResult.success) {
-            // Broadcast directly with the received gameState (don't wait for load)
-            // This is faster and ensures we send the exact state that was saved
-            const roomName = `user:${username}`;
-            const clientsInRoom = io.sockets.adapter.rooms.get(roomName);
-            const clientCount = clientsInRoom ? clientsInRoom.size : 0;
-            
-            console.log(`Broadcasting to room ${roomName}, ${clientCount} clients connected`);
-            
-            // Broadcast to other devices of the same user (but not the sender)
-            socket.to(roomName).emit('gameStateUpdate', {
-              username,
-              gameState,
-              version: version + 1,
-            });
-
-            console.log(`✅ Broadcasted game state update to other devices of ${username} (version ${version + 1})`);
-            
-            // Also try to get updated version for confirmation (optional)
-            try {
-              const loadResponse = await fetch(`${apiUrl}/api/load?username=${encodeURIComponent(username)}`, {
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-              });
-              if (loadResponse.ok) {
-                const loadResult = await loadResponse.json();
-                if (loadResult.success && loadResult.data) {
-                  const { metadata } = loadResult.data;
-                  const actualVersion = metadata?.version || version + 1;
-                  console.log(`Confirmed version after save: ${actualVersion}`);
-                }
-              }
-            } catch (loadError) {
-              // Non-critical, just for logging
-              console.warn('Could not confirm version after save:', loadError);
-            }
-          } else {
-            console.error(`Save failed for ${username}:`, saveResult);
-          }
-        } else {
-          console.error(`Save API returned error for ${username}:`, response.status, response.statusText);
-        }
-      } catch (error) {
-        console.error('Error saving game state:', error);
-      }
-    } catch (error) {
-      console.error('Error handling game state update:', error);
-      socket.emit('error', { message: 'Failed to save game state', code: 'SAVE_ERROR' });
+  
+  // Create lobby
+  socket.on('CREATE_LOBBY', () => {
+    if (!currentPlayerId) {
+      socket.emit('ERROR', { type: 'ERROR', message: 'Please set nickname first' } as ServerMessage);
+      return;
     }
+    
+    const lobbyId = `lobby_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const lobby: Lobby = {
+      id: lobbyId,
+      players: [currentPlayerId],
+      maxPlayers: 2,
+      createdAt: Date.now(),
+    };
+    
+    lobbies.set(lobbyId, lobby);
+    socket.join(`lobby:${lobbyId}`);
+    broadcastLobbyList();
+    
+    console.log(`Lobby ${lobbyId} created by ${currentNickname}`);
   });
-
-  socket.on('requestGameState', async ({ username }) => {
-    try {
-      if (!username || socket.data.username !== username) {
-        socket.emit('error', { message: 'Unauthorized', code: 'UNAUTHORIZED' });
-        return;
-      }
-
-      // Load from database via API
-      try {
-        const apiUrl = process.env.API_URL || process.env.VERCEL_URL || 'https://your-app.vercel.app';
-        const response = await fetch(`${apiUrl}/api/load?username=${encodeURIComponent(username)}`, {
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
-        if (response.ok) {
-          const result = await response.json();
-          if (result.success && result.data) {
-            const { metadata, ...gameState } = result.data;
-            socket.emit('gameStateUpdate', {
-              username,
-              gameState,
-              version: metadata?.version || 0,
-            });
-          }
-        }
-      } catch (error) {
-        console.error('Error loading game state:', error);
-      }
-    } catch (error) {
-      console.error('Error loading game state:', error);
-      socket.emit('error', { message: 'Failed to load game state', code: 'LOAD_ERROR' });
+  
+  // Join lobby
+  socket.on('JOIN_LOBBY', (message: ClientMessage) => {
+    if (!currentPlayerId) {
+      socket.emit('ERROR', { type: 'ERROR', message: 'Please set nickname first' } as ServerMessage);
+      return;
     }
-  });
-
-  socket.on('disconnect', (reason) => {
-    const username = socket.data.username;
-    if (username) {
-      const userSockets = userRooms.get(username);
-      if (userSockets) {
-        userSockets.delete(socket.id);
-        if (userSockets.size === 0) {
-          userRooms.delete(username);
-        }
-      }
-      console.log(`User ${username} disconnected: ${reason}`);
+    
+    if (!message.lobbyId) {
+      socket.emit('ERROR', { type: 'ERROR', message: 'Lobby ID required' } as ServerMessage);
+      return;
+    }
+    
+    const lobby = lobbies.get(message.lobbyId);
+    if (!lobby) {
+      socket.emit('ERROR', { type: 'ERROR', message: 'Lobby not found' } as ServerMessage);
+      return;
+    }
+    
+    if (lobby.players.length >= lobby.maxPlayers) {
+      socket.emit('ERROR', { type: 'ERROR', message: 'Lobby is full' } as ServerMessage);
+      return;
+    }
+    
+    if (lobby.players.includes(currentPlayerId)) {
+      socket.emit('ERROR', { type: 'ERROR', message: 'Already in this lobby' } as ServerMessage);
+      return;
+    }
+    
+    lobby.players.push(currentPlayerId);
+    socket.join(`lobby:${lobby.id}`);
+    
+    // Join match room for future use
+    socket.join(`match:${lobby.id}`);
+    
+    console.log(`${currentNickname} joined lobby ${message.lobbyId}`);
+    
+    // Start game if full
+    if (lobby.players.length === 2) {
+      startGame(lobby);
     } else {
-      console.log(`Socket ${socket.id} disconnected: ${reason}`);
+      broadcastLobbyList();
     }
   });
-
-  socket.on('error', (error) => {
-    console.error('Socket error:', error);
+  
+  // Make a move
+  socket.on('MOVE', async (message: ClientMessage) => {
+    if (!currentPlayerId) {
+      socket.emit('MOVE_REJECTED', { type: 'MOVE_REJECTED', reason: 'Not authenticated' } as ServerMessage);
+      return;
+    }
+    
+    if (message.from === undefined || message.to === undefined || !message.matchId) {
+      socket.emit('MOVE_REJECTED', { type: 'MOVE_REJECTED', reason: 'Invalid move data' } as ServerMessage);
+      return;
+    }
+    
+    const game = activeGames.get(message.matchId);
+    if (!game) {
+      socket.emit('MOVE_REJECTED', { type: 'MOVE_REJECTED', reason: 'Game not found' } as ServerMessage);
+      return;
+    }
+    
+    // Check if it's player's turn
+    const playerColor = currentPlayerId === game.playerRed ? 'red' : 'black';
+    if (playerColor !== game.currentTurn) {
+      socket.emit('MOVE_REJECTED', { type: 'MOVE_REJECTED', reason: 'Not your turn' } as ServerMessage);
+      return;
+    }
+    
+    // Validate move
+    const validation = validateMove(
+      game.board,
+      message.from,
+      message.to,
+      game.currentTurn,
+      game.canContinueJump,
+      game.continueJumpFrom
+    );
+    
+    if (!validation.valid) {
+      socket.emit('MOVE_REJECTED', { type: 'MOVE_REJECTED', reason: validation.reason || 'Invalid move' } as ServerMessage);
+      return;
+    }
+    
+    // Apply move
+    const result = applyMove(game.board, message.from, message.to, game.currentTurn);
+    game.board = result.newBoard;
+    game.lastMove = { from: message.from, to: message.to };
+    
+    // Save move to database - count moves in game state
+    if (!game.moveCount) game.moveCount = 0;
+    game.moveCount++;
+    try {
+      await addMove(message.matchId, game.moveCount, message.from, message.to);
+    } catch (error) {
+      console.error('Error saving move:', error);
+    }
+    
+    // Check for continued jump
+    const canJump = canContinueJump(game.board, message.to, game.currentTurn);
+    
+    if (canJump && result.captures.length > 0) {
+      // Continue jump
+      game.canContinueJump = true;
+      game.continueJumpFrom = message.to;
+      game.currentTurn = playerColor; // Keep same turn
+    } else {
+      // Switch turn
+      game.canContinueJump = false;
+      game.continueJumpFrom = null;
+      game.currentTurn = game.currentTurn === 'red' ? 'black' : 'red';
+    }
+    
+    // Check for game over
+    const gameOver = checkGameOver(game.board, game.currentTurn === 'red' ? 'black' : 'red');
+    
+    if (gameOver.gameOver && gameOver.winner) {
+      game.winner = gameOver.winner;
+      const winnerId = gameOver.winner === 'red' ? game.playerRed : game.playerBlack;
+      
+      try {
+        await finishMatch(message.matchId, winnerId);
+      } catch (error) {
+        console.error('Error finishing match:', error);
+      }
+      
+      io.to(`match:${message.matchId}`).emit('GAME_OVER', {
+        type: 'GAME_OVER',
+        winner: gameOver.winner,
+      } as ServerMessage);
+      
+      // Cleanup after a delay
+      setTimeout(() => {
+        activeGames.delete(message.matchId);
+        playerToGame.delete(game.playerRed);
+        playerToGame.delete(game.playerBlack);
+      }, 60000); // Clean up after 1 minute
+    } else {
+      // Broadcast move
+      io.to(`match:${message.matchId}`).emit('MOVE_ACCEPTED', {
+        type: 'MOVE_ACCEPTED',
+        board: game.board,
+        nextTurn: game.currentTurn,
+        from: message.from,
+        to: message.to,
+        canContinueJump: game.canContinueJump,
+        continueJumpFrom: game.continueJumpFrom,
+      } as ServerMessage);
+    }
+  });
+  
+  // Rematch accept
+  socket.on('REMATCH_ACCEPT', (message: ClientMessage) => {
+    if (!currentPlayerId || !message.matchId) return;
+    
+    const game = activeGames.get(message.matchId);
+    if (!game) return;
+    
+    if (!rematchRequests.has(message.matchId)) {
+      rematchRequests.set(message.matchId, new Set());
+    }
+    
+    rematchRequests.get(message.matchId)!.add(currentPlayerId);
+    
+    const requests = rematchRequests.get(message.matchId)!;
+    if (requests.size === 2) {
+      // Both accepted, create new game
+      const lobby: Lobby = {
+        id: `lobby_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        players: [game.playerRed, game.playerBlack],
+        maxPlayers: 2,
+        createdAt: Date.now(),
+      };
+      
+      startGame(lobby);
+      rematchRequests.delete(message.matchId);
+    } else {
+      // Notify other player
+      const otherPlayerId = currentPlayerId === game.playerRed ? game.playerBlack : game.playerRed;
+      io.to(`player:${otherPlayerId}`).emit('REMATCH_REQUEST', {
+        type: 'REMATCH_REQUEST',
+        message: 'Opponent wants to play again',
+      } as ServerMessage);
+    }
+  });
+  
+  // Leave match
+  socket.on('LEAVE_MATCH', (message: ClientMessage) => {
+    if (!currentPlayerId || !message.matchId) return;
+    
+    const game = activeGames.get(message.matchId);
+    if (game) {
+      activeGames.delete(message.matchId);
+      playerToGame.delete(game.playerRed);
+      playerToGame.delete(game.playerBlack);
+    }
+    
+    socket.leave(`match:${message.matchId}`);
+    
+    io.to(`match:${message.matchId}`).emit('MATCH_ENDED', {
+      type: 'MATCH_ENDED',
+      message: 'Opponent left the match',
+    } as ServerMessage);
+  });
+  
+  socket.on('disconnect', (reason) => {
+    console.log(`Client ${socket.id} disconnected: ${reason}`);
+    
+    if (currentPlayerId) {
+      handleDisconnect(currentPlayerId);
+      cleanupLobby(currentPlayerId);
+    }
+  });
+  
+  socket.on('connect', () => {
+    if (currentPlayerId) {
+      handleReconnect(currentPlayerId);
+    }
   });
 });
 
@@ -237,24 +483,38 @@ httpServer.on('request', (req, res) => {
     res.end(JSON.stringify({ 
       status: 'ok', 
       connections: io.engine.clientsCount,
+      activeGames: activeGames.size,
+      lobbies: lobbies.size,
       timestamp: new Date().toISOString(),
     }));
     return;
   }
   
-  // Default response
   res.writeHead(404);
   res.end('Not Found');
 });
 
-// Start server
+// Initialize database and start server
 const PORT = process.env.PORT || 3001;
-httpServer.listen(PORT, '0.0.0.0', () => {
-  console.log(`WebSocket server running on port ${PORT}`);
-  console.log(`CORS enabled for: ${process.env.CLIENT_URL || process.env.VITE_CLIENT_URL || '*'}`);
-  console.log(`Health check: http://localhost:${PORT}/health`);
-  console.log(`Server is ready and listening on 0.0.0.0:${PORT}`);
-});
+
+async function startServer() {
+  try {
+    // Initialize database schema
+    await initDatabase();
+    console.log('Database initialized');
+  } catch (error) {
+    console.error('Error initializing database:', error);
+    // Continue anyway - database might already be initialized
+  }
+
+  httpServer.listen(PORT, '0.0.0.0', () => {
+    console.log(`Checkers WebSocket server running on port ${PORT}`);
+    console.log(`CORS enabled for: ${process.env.CLIENT_URL || process.env.VITE_CLIENT_URL || '*'}`);
+    console.log(`Health check: http://localhost:${PORT}/health`);
+  });
+}
+
+startServer();
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
@@ -267,4 +527,3 @@ process.on('SIGTERM', () => {
     });
   });
 });
-

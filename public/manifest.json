@@ -1,11 +1,11 @@
 {
-  "name": "Gemini Farm Tycoon",
-  "short_name": "Gemini Farm",
-  "description": "Build and manage your farm, complete missions, and grow your village!",
+  "name": "Online Checkers Game",
+  "short_name": "Checkers",
+  "description": "Real-time multiplayer Checkers game",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#111827",
-  "theme_color": "#10b981",
+  "theme_color": "#7c3aed",
   "orientation": "portrait-primary",
   "icons": [
     {

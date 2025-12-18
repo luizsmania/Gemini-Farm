@@ -1,6 +1,6 @@
 # 🚀 Deployment Guide
 
-This document consolidates all deployment and configuration instructions for Gemini Farm Tycoon.
+This document consolidates all deployment and configuration instructions for the Online Checkers Game.
 
 ## 📋 Table of Contents
 
@@ -49,7 +49,7 @@ This document consolidates all deployment and configuration instructions for Gem
 
 2. **Configure Service**
    - Railway will detect `server.js` automatically
-   - Set start command: `node server.js`
+   - Set start command: `npx tsx server.js` (or use railway.json)
    - Set port: Railway assigns automatically (use `PORT` env var)
 
 3. **Environment Variables**
@@ -81,7 +81,7 @@ This document consolidates all deployment and configuration instructions for Gem
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "node server.js",
+    "startCommand": "npx tsx server.js",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }
@@ -90,7 +90,7 @@ This document consolidates all deployment and configuration instructions for Gem
 
 **Procfile** (already in repo):
 ```
-web: node server.js
+web: npx tsx server.js
 ```
 
 ---
@@ -113,9 +113,10 @@ web: node server.js
    - `POSTGRES_URL_NON_POOLING`
 
 3. **Database Schema**
-   Tables are created automatically on first API request:
-   - `users` - User accounts
-   - `game_states` - Game progress (JSONB)
+   Tables are created automatically when the WebSocket server starts:
+   - `players` - Player accounts (nickname only)
+   - `matches` - Match records
+   - `moves` - Move history
 
 ---
 
@@ -124,9 +125,6 @@ web: node server.js
 ### Vercel Environment Variables
 
 ```env
-# Gemini AI API
-VITE_GEMINI_API_KEY=your_gemini_api_key_here
-
 # WebSocket Server URL
 VITE_WS_URL=wss://your-railway-app.up.railway.app
 

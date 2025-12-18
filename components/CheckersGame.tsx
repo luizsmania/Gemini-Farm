@@ -1,0 +1,278 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { checkersWebSocketService } from '../services/checkersWebSocketService';
+import { ServerMessage, Board, Piece, Color } from '../types/checkers';
+import { Button } from './Button';
+import { X } from 'lucide-react';
+
+interface CheckersGameProps {
+  matchId: string;
+  initialBoard: Board;
+  yourColor: Color;
+  playerId?: string;
+  onLeave: () => void;
+}
+
+const BOARD_SIZE = 8;
+
+export const CheckersGame: React.FC<CheckersGameProps> = ({
+  matchId,
+  initialBoard,
+  yourColor,
+  playerId,
+  onLeave,
+}) => {
+  const [board, setBoard] = useState<Board>(initialBoard);
+  const [currentTurn, setCurrentTurn] = useState<Color>('red');
+  const [selectedSquare, setSelectedSquare] = useState<number | null>(null);
+  const [legalMoves, setLegalMoves] = useState<number[]>([]);
+  const [winner, setWinner] = useState<Color | null>(null);
+  const [canContinueJump, setCanContinueJump] = useState(false);
+  const [continueJumpFrom, setContinueJumpFrom] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [opponentDisconnected, setOpponentDisconnected] = useState(false);
+  const [showRematch, setShowRematch] = useState(false);
+
+  useEffect(() => {
+    const handleMoveAccepted = (message: ServerMessage) => {
+      if (message.type === 'MOVE_ACCEPTED' && message.board) {
+        setBoard(message.board);
+        if (message.nextTurn) {
+          setCurrentTurn(message.nextTurn);
+        }
+        if (message.canContinueJump !== undefined) {
+          setCanContinueJump(message.canContinueJump);
+        }
+        if (message.continueJumpFrom !== undefined) {
+          setContinueJumpFrom(message.continueJumpFrom);
+        }
+        setSelectedSquare(null);
+        setLegalMoves([]);
+        setError(null);
+      }
+    };
+
+    const handleMoveRejected = (message: ServerMessage) => {
+      if (message.type === 'MOVE_REJECTED' && message.reason) {
+        setError(message.reason);
+        setSelectedSquare(null);
+        setLegalMoves([]);
+      }
+    };
+
+    const handleGameOver = (message: ServerMessage) => {
+      if (message.type === 'GAME_OVER' && message.winner) {
+        setWinner(message.winner);
+        setShowRematch(true);
+      }
+    };
+
+    const handlePlayerDisconnected = (message: ServerMessage) => {
+      if (message.type === 'PLAYER_DISCONNECTED') {
+        setOpponentDisconnected(true);
+        setTimeout(() => setOpponentDisconnected(false), 3000);
+      }
+    };
+
+    const handleRematchRequest = (message: ServerMessage) => {
+      if (message.type === 'REMATCH_REQUEST') {
+        setShowRematch(true);
+      }
+    };
+
+    checkersWebSocketService.on('MOVE_ACCEPTED', handleMoveAccepted);
+    checkersWebSocketService.on('MOVE_REJECTED', handleMoveRejected);
+    checkersWebSocketService.on('GAME_OVER', handleGameOver);
+    checkersWebSocketService.on('PLAYER_DISCONNECTED', handlePlayerDisconnected);
+    checkersWebSocketService.on('REMATCH_REQUEST', handleRematchRequest);
+
+    return () => {
+      checkersWebSocketService.off('MOVE_ACCEPTED', handleMoveAccepted);
+      checkersWebSocketService.off('MOVE_REJECTED', handleMoveRejected);
+      checkersWebSocketService.off('GAME_OVER', handleGameOver);
+      checkersWebSocketService.off('PLAYER_DISCONNECTED', handlePlayerDisconnected);
+      checkersWebSocketService.off('REMATCH_REQUEST', handleRematchRequest);
+    };
+  }, []);
+
+  const getPieceDisplay = (piece: Piece): string => {
+    switch (piece) {
+      case 'r': return '🔴';
+      case 'R': return '🔴👑';
+      case 'b': return '⚫';
+      case 'B': return '⚫👑';
+      default: return '';
+    }
+  };
+
+  const isDarkSquare = (row: number, col: number): boolean => {
+    return (row + col) % 2 === 1;
+  };
+
+  const getSquareColor = (index: number, isSelected: boolean, isLegalMove: boolean): string => {
+    if (isSelected) return 'bg-yellow-500/50';
+    if (isLegalMove) return 'bg-green-500/30';
+    const { row, col } = indexToPos(index);
+    return isDarkSquare(row, col) ? 'bg-amber-900' : 'bg-amber-50';
+  };
+
+  const indexToPos = (index: number): { row: number; col: number } => {
+    return {
+      row: Math.floor(index / BOARD_SIZE),
+      col: index % BOARD_SIZE,
+    };
+  };
+
+  const handleSquareClick = useCallback((index: number) => {
+    const piece = board[index];
+    const isYourPiece = piece !== null && 
+      ((yourColor === 'red' && (piece === 'r' || piece === 'R')) ||
+       (yourColor === 'black' && (piece === 'b' || piece === 'B')));
+
+    if (winner) return;
+
+    if (currentTurn !== yourColor) {
+      setError('Wait for your turn');
+      return;
+    }
+
+    if (canContinueJump && continueJumpFrom !== null) {
+      // Must continue jump from the same piece
+      if (index !== continueJumpFrom && selectedSquare !== continueJumpFrom) {
+        setError('You must continue your jump');
+        return;
+      }
+      if (selectedSquare === continueJumpFrom || index === continueJumpFrom) {
+        setSelectedSquare(continueJumpFrom);
+        // Calculate legal moves for continuing jump (simplified - server will validate)
+        setLegalMoves([]);
+        return;
+      }
+    }
+
+    if (selectedSquare === null) {
+      if (isYourPiece) {
+        setSelectedSquare(index);
+        // Calculate legal moves (simplified - server will validate)
+        setLegalMoves([]);
+      }
+    } else {
+      if (selectedSquare === index) {
+        // Deselect
+        setSelectedSquare(null);
+        setLegalMoves([]);
+      } else if (isYourPiece) {
+        // Select different piece
+        setSelectedSquare(index);
+        setLegalMoves([]);
+      } else {
+        // Try to move
+        checkersWebSocketService.makeMove(matchId, selectedSquare, index);
+        setError(null);
+      }
+    }
+  }, [board, selectedSquare, yourColor, currentTurn, canContinueJump, continueJumpFrom, winner, matchId]);
+
+  const handleRematch = () => {
+    checkersWebSocketService.acceptRematch(matchId);
+    setShowRematch(false);
+  };
+
+  const handleLeave = () => {
+    checkersWebSocketService.leaveMatch(matchId);
+    onLeave();
+  };
+
+  const renderSquare = (index: number) => {
+    const piece = board[index];
+    const isSelected = selectedSquare === index;
+    const isLegalMove = legalMoves.includes(index);
+    const colorClass = getSquareColor(index, isSelected, isLegalMove);
+
+    return (
+      <div
+        key={index}
+        onClick={() => handleSquareClick(index)}
+        className={`${colorClass} aspect-square flex items-center justify-center cursor-pointer transition-all hover:scale-105 border-2 ${
+          isSelected ? 'border-yellow-400' : 'border-transparent'
+        }`}
+      >
+        {piece && (
+          <span className="text-4xl filter drop-shadow-lg">
+            {getPieceDisplay(piece)}
+          </span>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4">
+      <div className="max-w-4xl mx-auto">
+        <div className="bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-2xl p-6">
+          <div className="flex justify-between items-center mb-4">
+            <div>
+              <h2 className="text-2xl font-bold text-white">Checkers Game</h2>
+              <p className="text-slate-400">
+                You are: <span className={`font-bold ${yourColor === 'red' ? 'text-red-400' : 'text-black'}`}>
+                  {yourColor === 'red' ? '🔴 Red' : '⚫ Black'}
+                </span>
+              </p>
+              <p className="text-slate-400">
+                Current turn: <span className={`font-bold ${currentTurn === 'red' ? 'text-red-400' : 'text-black'}`}>
+                  {currentTurn === 'red' ? '🔴 Red' : '⚫ Black'}
+                </span>
+              </p>
+              {canContinueJump && (
+                <p className="text-yellow-400 text-sm mt-1">You must continue your jump!</p>
+              )}
+            </div>
+            <Button onClick={handleLeave} variant="danger" size="sm">
+              <X size={20} />
+            </Button>
+          </div>
+
+          {error && (
+            <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 text-sm">
+              {error}
+            </div>
+          )}
+
+          {opponentDisconnected && (
+            <div className="mb-4 p-3 bg-yellow-500/20 border border-yellow-500/50 rounded-lg text-yellow-400 text-sm">
+              Opponent disconnected. Waiting for reconnection...
+            </div>
+          )}
+
+          {winner && (
+            <div className="mb-4 p-4 bg-green-500/20 border border-green-500/50 rounded-lg text-center">
+              <p className="text-2xl font-bold text-green-400 mb-2">
+                {winner === yourColor ? '🎉 You Win!' : '😔 You Lost'}
+              </p>
+              <p className="text-slate-300">Winner: {winner === 'red' ? '🔴 Red' : '⚫ Black'}</p>
+            </div>
+          )}
+
+          {/* Checkers Board */}
+          <div className="grid grid-cols-8 gap-0 bg-amber-800 p-2 rounded-lg mb-4" style={{ maxWidth: '600px', margin: '0 auto' }}>
+            {Array.from({ length: BOARD_SIZE * BOARD_SIZE }, (_, i) => renderSquare(i))}
+          </div>
+
+          {showRematch && !winner && (
+            <div className="text-center">
+              <p className="text-white mb-4">Opponent wants to play again!</p>
+              <Button onClick={handleRematch}>Accept Rematch</Button>
+            </div>
+          )}
+
+          {winner && (
+            <div className="text-center space-x-4">
+              <Button onClick={handleRematch}>Play Again</Button>
+              <Button onClick={handleLeave} variant="danger">Leave</Button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
