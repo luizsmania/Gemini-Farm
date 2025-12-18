@@ -71,32 +71,32 @@ export const CheckersHistory: React.FC<CheckersHistoryProps> = ({ playerId, onBa
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-2 sm:p-4">
       <div className="max-w-4xl mx-auto">
-        <div className="bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-2xl p-6">
-          <div className="flex items-center mb-6">
-            <Button onClick={onBack} variant="secondary" size="sm" className="mr-4">
-              <ArrowLeft size={20} />
+        <div className="bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-2xl p-4 sm:p-6">
+          <div className="flex items-center mb-4 sm:mb-6">
+            <Button onClick={onBack} variant="secondary" size="sm" className="mr-3 sm:mr-4">
+              <ArrowLeft size={18} className="sm:w-5 sm:h-5" />
             </Button>
-            <h2 className="text-2xl font-bold text-white">Match History</h2>
+            <h2 className="text-xl sm:text-2xl font-bold text-white">Match History</h2>
           </div>
 
           {loading && (
-            <div className="text-center py-12 text-slate-400">
+            <div className="text-center py-8 sm:py-12 text-slate-400 text-sm sm:text-base">
               Loading history...
             </div>
           )}
 
           {error && (
-            <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 text-sm">
+            <div className="mb-3 sm:mb-4 p-2 sm:p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 text-xs sm:text-sm">
               {error}
             </div>
           )}
 
           {!loading && !error && history.length === 0 && (
-            <div className="text-center py-12 text-slate-400">
-              <p className="mb-2">No match history yet</p>
-              <p className="text-sm">Play some games to see your history here!</p>
+            <div className="text-center py-8 sm:py-12 text-slate-400">
+              <p className="mb-2 text-sm sm:text-base">No match history yet</p>
+              <p className="text-xs sm:text-sm">Play some games to see your history here!</p>
             </div>
           )}
 
@@ -105,11 +105,11 @@ export const CheckersHistory: React.FC<CheckersHistoryProps> = ({ playerId, onBa
               {history.map((match) => (
                 <div
                   key={match.id}
-                  className="flex items-center justify-between p-4 bg-slate-700/50 rounded-lg hover:bg-slate-700 transition-colors"
+                  className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 p-3 sm:p-4 bg-slate-700/50 rounded-lg hover:bg-slate-700 transition-colors"
                 >
-                  <div className="flex-1">
-                    <div className="flex items-center gap-4 mb-2">
-                      <span className="text-white font-semibold">{match.opponentNickname}</span>
+                  <div className="flex-1 w-full">
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-4 mb-1 sm:mb-2">
+                      <span className="text-white font-semibold text-sm sm:text-base">{match.opponentNickname}</span>
                       <span className={`px-2 py-1 rounded text-xs font-semibold ${
                         match.yourColor === 'red' 
                           ? 'bg-red-500/20 text-red-400' 
@@ -127,7 +127,7 @@ export const CheckersHistory: React.FC<CheckersHistoryProps> = ({ playerId, onBa
                         </span>
                       )}
                     </div>
-                    <div className="text-slate-400 text-sm">
+                    <div className="text-slate-400 text-xs sm:text-sm">
                       {formatDate(match.finishedAt)}
                     </div>
                   </div>

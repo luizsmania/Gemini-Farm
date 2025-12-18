@@ -543,18 +543,18 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           // Convert display index back to board index for handling
           handleSquareClick(boardIndex);
         }}
-        className={`${colorClass} aspect-square flex items-center justify-center cursor-pointer transition-all hover:scale-105 border-2 ${
+        className={`${colorClass} aspect-square flex items-center justify-center cursor-pointer transition-all active:scale-95 sm:hover:scale-105 border-2 touch-manipulation ${
           isSelected ? 'border-yellow-400' : isMandatoryCapture ? 'border-blue-400' : 'border-transparent'
         }`}
-        style={{ position: 'relative', zIndex: 1, minHeight: '60px', minWidth: '60px' }}
+        style={{ position: 'relative', zIndex: 1 }}
       >
         {piece && (() => {
           const display = getPieceDisplay(piece);
           return (
             <div className="relative flex items-center justify-center pointer-events-none select-none w-full h-full">
-              <span className="text-4xl filter drop-shadow-lg relative z-10">{display.emoji}</span>
+              <span className="text-2xl sm:text-3xl md:text-4xl filter drop-shadow-lg relative z-10">{display.emoji}</span>
               {display.isKing && (
-                <span className="text-2xl absolute -top-1 left-1/2 transform -translate-x-1/2 filter drop-shadow-lg z-20">👑</span>
+                <span className="text-lg sm:text-xl md:text-2xl absolute -top-0.5 sm:-top-1 left-1/2 transform -translate-x-1/2 filter drop-shadow-lg z-20">👑</span>
               )}
             </div>
           );
@@ -564,56 +564,56 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-2 sm:p-4">
       <div className="max-w-4xl mx-auto">
-        <div className="bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-2xl p-6">
-          <div className="flex justify-between items-center mb-4">
-            <div>
-              <h2 className="text-2xl font-bold text-white">Checkers Game</h2>
-              <p className="text-slate-400">
+        <div className="bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-2xl p-3 sm:p-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-0 mb-3 sm:mb-4">
+            <div className="flex-1">
+              <h2 className="text-xl sm:text-2xl font-bold text-white">Checkers Game</h2>
+              <p className="text-xs sm:text-sm text-slate-400">
                 You are: <span className={`font-bold ${yourColor === 'red' ? 'text-red-400' : 'text-black'}`}>
                   {yourColor === 'red' ? '🔴 Red' : '⚫ Black'}
                 </span>
               </p>
-              <p className="text-slate-400">
+              <p className="text-xs sm:text-sm text-slate-400">
                 Current turn: <span className={`font-bold ${currentTurn === 'red' ? 'text-red-400' : 'text-black'}`}>
                   {currentTurn === 'red' ? '🔴 Red' : '⚫ Black'}
                 </span>
               </p>
               {canContinueJump && (
-                <p className="text-yellow-400 text-sm mt-1">You must continue your jump!</p>
+                <p className="text-yellow-400 text-xs sm:text-sm mt-1">You must continue your jump!</p>
               )}
             </div>
-            <Button onClick={handleLeave} variant="danger" size="sm">
-              <X size={20} />
+            <Button onClick={handleLeave} variant="danger" size="sm" className="self-end sm:self-auto">
+              <X size={18} className="sm:w-5 sm:h-5" />
             </Button>
           </div>
 
           {error && (
-            <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 p-3 bg-red-500/90 border border-red-500 rounded-lg text-red-100 text-sm shadow-2xl max-w-md">
+            <div className="fixed top-2 sm:top-4 left-2 right-2 sm:left-1/2 sm:right-auto sm:transform sm:-translate-x-1/2 z-50 p-2 sm:p-3 bg-red-500/90 border border-red-500 rounded-lg text-red-100 text-xs sm:text-sm shadow-2xl max-w-md mx-auto">
               {error}
             </div>
           )}
 
           {opponentDisconnected && (
-            <div className="mb-4 p-3 bg-yellow-500/20 border border-yellow-500/50 rounded-lg text-yellow-400 text-sm">
+            <div className="mb-3 sm:mb-4 p-2 sm:p-3 bg-yellow-500/20 border border-yellow-500/50 rounded-lg text-yellow-400 text-xs sm:text-sm">
               Opponent disconnected. Waiting for reconnection...
             </div>
           )}
 
           {winner && (
-            <div className="mb-4 p-4 bg-green-500/20 border border-green-500/50 rounded-lg text-center">
-              <p className="text-2xl font-bold text-green-400 mb-2">
+            <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-green-500/20 border border-green-500/50 rounded-lg text-center">
+              <p className="text-xl sm:text-2xl font-bold text-green-400 mb-1 sm:mb-2">
                 {winner === yourColor ? '🎉 You Win!' : '😔 You Lost'}
               </p>
-              <p className="text-slate-300">Winner: {winner === 'red' ? '🔴 Red' : '⚫ Black'}</p>
+              <p className="text-sm sm:text-base text-slate-300">Winner: {winner === 'red' ? '🔴 Red' : '⚫ Black'}</p>
             </div>
           )}
 
           {/* Checkers Board */}
           <div 
-            className="grid grid-cols-8 gap-0 bg-amber-800 p-2 rounded-lg mb-4" 
-            style={{ maxWidth: '600px', margin: '0 auto', position: 'relative', zIndex: 0 }}
+            className="grid grid-cols-8 gap-0 bg-amber-800 p-1 sm:p-2 rounded-lg mb-3 sm:mb-4 w-full max-w-full sm:max-w-[600px] mx-auto" 
+            style={{ position: 'relative', zIndex: 0, aspectRatio: '1' }}
             onClick={(e) => {
               // Allow clicks to pass through to squares
               e.stopPropagation();
@@ -624,15 +624,15 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
 
           {showRematch && !winner && (
             <div className="text-center">
-              <p className="text-white mb-4">Opponent wants to play again!</p>
-              <Button onClick={handleRematch}>Accept Rematch</Button>
+              <p className="text-white text-sm sm:text-base mb-3 sm:mb-4">Opponent wants to play again!</p>
+              <Button onClick={handleRematch} className="w-full sm:w-auto">Accept Rematch</Button>
             </div>
           )}
 
           {winner && (
-            <div className="text-center space-x-4">
-              <Button onClick={handleRematch}>Play Again</Button>
-              <Button onClick={handleLeave} variant="danger">Leave</Button>
+            <div className="text-center flex flex-col sm:flex-row gap-2 sm:gap-4 sm:justify-center">
+              <Button onClick={handleRematch} className="w-full sm:w-auto">Play Again</Button>
+              <Button onClick={handleLeave} variant="danger" className="w-full sm:w-auto">Leave</Button>
             </div>
           )}
         </div>

@@ -138,32 +138,32 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
 
   if (!nicknameSet) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
-        <div className="bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-2xl p-8 w-full max-w-md">
-          <h1 className="text-4xl font-bold text-center mb-2 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4 sm:p-6">
+        <div className="bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-2xl p-6 sm:p-8 w-full max-w-md">
+          <h1 className="text-3xl sm:text-4xl font-bold text-center mb-2 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
             Online Checkers
           </h1>
-          <p className="text-slate-400 text-center mb-6">Enter your nickname to start</p>
+          <p className="text-sm sm:text-base text-slate-400 text-center mb-4 sm:mb-6">Enter your nickname to start</p>
           
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4">
             <input
               type="text"
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleSetNickname()}
               placeholder="Enter your nickname"
-              className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              className="w-full px-4 py-3 text-base sm:text-lg bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
               maxLength={20}
             />
             
             {error && (
-              <div className="text-red-400 text-sm text-center">{error}</div>
+              <div className="text-red-400 text-xs sm:text-sm text-center">{error}</div>
             )}
             
             <Button
               onClick={handleSetNickname}
               disabled={loading || !nickname.trim()}
-              className="w-full"
+              className="w-full text-base sm:text-lg py-3"
             >
               {loading ? (
                 <>
@@ -181,34 +181,34 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-2 sm:p-4">
       <div className="max-w-4xl mx-auto">
-        <div className="bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-2xl p-6 mb-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-3xl font-bold mb-2 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+        <div className="bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-2xl p-4 sm:p-6 mb-4 sm:mb-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-0">
+            <div className="flex-1">
+              <h1 className="text-2xl sm:text-3xl font-bold mb-1 sm:mb-2 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
                 Online Checkers
               </h1>
-              <p className="text-slate-400">Welcome, <span className="text-purple-400 font-semibold">{nickname}</span>!</p>
+              <p className="text-sm sm:text-base text-slate-400">Welcome, <span className="text-purple-400 font-semibold">{nickname}</span>!</p>
             </div>
             {onLogout && (
-              <Button onClick={onLogout} variant="danger" size="sm">
+              <Button onClick={onLogout} variant="danger" size="sm" className="self-end sm:self-auto">
                 Logout
               </Button>
             )}
           </div>
         </div>
 
-        <div className="bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-2xl p-6 mb-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-2xl font-bold text-white">Available Lobbies</h2>
-            <div className="flex gap-2">
+        <div className="bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-2xl p-4 sm:p-6 mb-4 sm:mb-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-0 mb-3 sm:mb-4">
+            <h2 className="text-xl sm:text-2xl font-bold text-white">Available Lobbies</h2>
+            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
               {playerId && onShowHistory && (
-                <Button onClick={onShowHistory} variant="secondary">
+                <Button onClick={onShowHistory} variant="secondary" className="w-full sm:w-auto">
                   History
                 </Button>
               )}
-              <Button onClick={handleCreateLobby} disabled={loading}>
+              <Button onClick={handleCreateLobby} disabled={loading} className="w-full sm:w-auto">
                 {loading ? <Loader2 className="animate-spin" size={20} /> : 'Create Lobby'}
               </Button>
             </div>
@@ -221,20 +221,20 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
           )}
 
           {lobbies.length === 0 ? (
-            <div className="text-center py-12 text-slate-400">
-              <p className="mb-4">No open lobbies available</p>
-              <p className="text-sm">Create a lobby to start a new game!</p>
+            <div className="text-center py-8 sm:py-12 text-slate-400">
+              <p className="mb-2 sm:mb-4 text-sm sm:text-base">No open lobbies available</p>
+              <p className="text-xs sm:text-sm">Create a lobby to start a new game!</p>
             </div>
           ) : (
             <div className="space-y-2">
               {lobbies.map((lobby) => (
                 <div
                   key={lobby.id}
-                  className="flex items-center justify-between p-4 bg-slate-700/50 rounded-lg hover:bg-slate-700 transition-colors"
+                  className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 p-3 sm:p-4 bg-slate-700/50 rounded-lg hover:bg-slate-700 transition-colors"
                 >
-                  <div>
-                    <div className="text-white font-semibold">Lobby {lobby.id.slice(-8)}</div>
-                    <div className="text-slate-400 text-sm">
+                  <div className="flex-1">
+                    <div className="text-white font-semibold text-sm sm:text-base">Lobby {lobby.id.slice(-8)}</div>
+                    <div className="text-slate-400 text-xs sm:text-sm">
                       {lobby.playerCount}/{lobby.maxPlayers} players
                     </div>
                   </div>
@@ -242,6 +242,7 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
                     onClick={() => handleJoinLobby(lobby.id)}
                     disabled={loading || lobby.playerCount >= lobby.maxPlayers}
                     size="sm"
+                    className="w-full sm:w-auto"
                   >
                     {lobby.playerCount >= lobby.maxPlayers ? 'Full' : 'Join'}
                   </Button>
