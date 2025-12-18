@@ -224,6 +224,18 @@ io.on('connection', (socket) => {
   let currentPlayerId: string | null = null;
   let currentNickname: string | null = null;
   
+  // Log all incoming events for debugging
+  const originalOnevent = socket.onevent;
+  socket.onevent = function (packet: any) {
+    const args = packet.data || [];
+    if (args[0] === 'MOVE') {
+      console.log(`[Socket ${socket.id}] MOVE event received!`, JSON.stringify(args[1]));
+    } else {
+      console.log(`[Socket ${socket.id}] Event received:`, args[0]);
+    }
+    originalOnevent.call(this, packet);
+  };
+  
   // Set nickname and create/get player
   socket.on('SET_NICKNAME', async (message: ClientMessage) => {
     try {
@@ -342,122 +354,129 @@ io.on('connection', (socket) => {
   
   // Make a move
   socket.on('MOVE', async (message: ClientMessage) => {
-    console.log(`MOVE received from ${currentPlayerId}:`, message);
-    if (!currentPlayerId) {
-      console.log('MOVE rejected: Not authenticated');
-      socket.emit('MOVE_REJECTED', { type: 'MOVE_REJECTED', reason: 'Not authenticated' } as ServerMessage);
-      return;
-    }
-    
-    if (message.from === undefined || message.to === undefined || !message.matchId) {
-      console.log('MOVE rejected: Invalid move data');
-      socket.emit('MOVE_REJECTED', { type: 'MOVE_REJECTED', reason: 'Invalid move data' } as ServerMessage);
-      return;
-    }
-    
-    const game = activeGames.get(message.matchId);
-    if (!game) {
-      console.log('MOVE rejected: Game not found');
-      socket.emit('MOVE_REJECTED', { type: 'MOVE_REJECTED', reason: 'Game not found' } as ServerMessage);
-      return;
-    }
-    
-    // Check if it's player's turn
-    const playerColor = currentPlayerId === game.playerRed ? 'red' : 'black';
-    if (playerColor !== game.currentTurn) {
-      console.log(`MOVE rejected: Not player's turn. Player: ${playerColor}, Current turn: ${game.currentTurn}`);
-      socket.emit('MOVE_REJECTED', { type: 'MOVE_REJECTED', reason: 'Not your turn' } as ServerMessage);
-      return;
-    }
-    
-    // Validate move
-    const validation = validateMove(
-      game.board,
-      message.from,
-      message.to,
-      game.currentTurn,
-      game.canContinueJump,
-      game.continueJumpFrom
-    );
-    
-    if (!validation.valid) {
-      console.log('MOVE rejected: Invalid move -', validation.reason);
-      socket.emit('MOVE_REJECTED', { type: 'MOVE_REJECTED', reason: validation.reason || 'Invalid move' } as ServerMessage);
-      return;
-    }
-    
-    console.log('MOVE validated, applying move...');
-    
-    // Apply move
-    const result = applyMove(game.board, message.from, message.to, game.currentTurn);
-    game.board = result.newBoard;
-    game.lastMove = { from: message.from, to: message.to };
-    
-    // Save move to database - count moves in game state
-    if (!game.moveCount) game.moveCount = 0;
-    game.moveCount++;
     try {
-      await addMove(message.matchId, game.moveCount, message.from, message.to);
-    } catch (dbError) {
-      // Non-critical - game continues even if move isn't saved
-      console.error('Error saving move to database (non-critical):', dbError);
-    }
-    
-    // Check for continued jump
-    const canJump = canContinueJump(game.board, message.to, game.currentTurn);
-    
-    if (canJump && result.captures.length > 0) {
-      // Continue jump
-      game.canContinueJump = true;
-      game.continueJumpFrom = message.to;
-      game.currentTurn = playerColor; // Keep same turn
-    } else {
-      // Switch turn
-      game.canContinueJump = false;
-      game.continueJumpFrom = null;
-      game.currentTurn = game.currentTurn === 'red' ? 'black' : 'red';
-    }
-    
-    // Check for game over
-    const gameOver = checkGameOver(game.board, game.currentTurn === 'red' ? 'black' : 'red');
-    
-    if (gameOver.gameOver && gameOver.winner) {
-      game.winner = gameOver.winner;
-      const winnerId = gameOver.winner === 'red' ? game.playerRed : game.playerBlack;
-      
-      try {
-        await finishMatch(message.matchId, winnerId);
-      } catch (dbError) {
-        // Non-critical - game can end even if database fails
-        console.error('Error finishing match in database (non-critical):', dbError);
+      console.log(`[MOVE] Received from socket ${socket.id}, player ${currentPlayerId}:`, JSON.stringify(message));
+      if (!currentPlayerId) {
+        console.log('[MOVE] Rejected: Not authenticated');
+        socket.emit('MOVE_REJECTED', { type: 'MOVE_REJECTED', reason: 'Not authenticated' } as ServerMessage);
+        return;
       }
       
-      io.to(`match:${message.matchId}`).emit('GAME_OVER', {
-        type: 'GAME_OVER',
-        winner: gameOver.winner,
-      } as ServerMessage);
+      if (message.from === undefined || message.to === undefined || !message.matchId) {
+        console.log('[MOVE] Rejected: Invalid move data');
+        socket.emit('MOVE_REJECTED', { type: 'MOVE_REJECTED', reason: 'Invalid move data' } as ServerMessage);
+        return;
+      }
       
-      // Cleanup after a delay
-      setTimeout(() => {
-        activeGames.delete(message.matchId);
-        playerToGame.delete(game.playerRed);
-        playerToGame.delete(game.playerBlack);
-      }, 60000); // Clean up after 1 minute
-    } else {
-      // Broadcast move
-      const moveAcceptedMessage = {
-        type: 'MOVE_ACCEPTED',
-        board: game.board,
-        nextTurn: game.currentTurn,
-        from: message.from,
-        to: message.to,
-        canContinueJump: game.canContinueJump,
-        continueJumpFrom: game.continueJumpFrom,
-      } as ServerMessage;
-      console.log(`Broadcasting MOVE_ACCEPTED to match:${message.matchId}`, moveAcceptedMessage);
-      // Emit to both the match room and directly to the socket to ensure delivery
-      io.to(`match:${message.matchId}`).emit('MOVE_ACCEPTED', moveAcceptedMessage);
-      socket.emit('MOVE_ACCEPTED', moveAcceptedMessage);
+      const game = activeGames.get(message.matchId);
+      if (!game) {
+        console.log('[MOVE] Rejected: Game not found');
+        socket.emit('MOVE_REJECTED', { type: 'MOVE_REJECTED', reason: 'Game not found' } as ServerMessage);
+        return;
+      }
+      
+      // Check if it's player's turn
+      const playerColor = currentPlayerId === game.playerRed ? 'red' : 'black';
+      if (playerColor !== game.currentTurn) {
+        console.log(`[MOVE] Rejected: Not player's turn. Player: ${playerColor}, Current turn: ${game.currentTurn}`);
+        socket.emit('MOVE_REJECTED', { type: 'MOVE_REJECTED', reason: 'Not your turn' } as ServerMessage);
+        return;
+      }
+      
+      // Validate move
+      const validation = validateMove(
+        game.board,
+        message.from,
+        message.to,
+        game.currentTurn,
+        game.canContinueJump,
+        game.continueJumpFrom
+      );
+      
+      if (!validation.valid) {
+        console.log('[MOVE] Rejected: Invalid move -', validation.reason);
+        socket.emit('MOVE_REJECTED', { type: 'MOVE_REJECTED', reason: validation.reason || 'Invalid move' } as ServerMessage);
+        return;
+      }
+      
+      console.log('[MOVE] Validated, applying move...');
+      
+      // Apply move
+      const result = applyMove(game.board, message.from, message.to, game.currentTurn);
+      game.board = result.newBoard;
+      game.lastMove = { from: message.from, to: message.to };
+      
+      // Save move to database - count moves in game state
+      if (!game.moveCount) game.moveCount = 0;
+      game.moveCount++;
+      try {
+        await addMove(message.matchId, game.moveCount, message.from, message.to);
+      } catch (dbError) {
+        // Non-critical - game continues even if move isn't saved
+        console.error('Error saving move to database (non-critical):', dbError);
+      }
+      
+      // Check for continued jump
+      const canJump = canContinueJump(game.board, message.to, game.currentTurn);
+      
+      if (canJump && result.captures.length > 0) {
+        // Continue jump
+        game.canContinueJump = true;
+        game.continueJumpFrom = message.to;
+        game.currentTurn = playerColor; // Keep same turn
+      } else {
+        // Switch turn
+        game.canContinueJump = false;
+        game.continueJumpFrom = null;
+        game.currentTurn = game.currentTurn === 'red' ? 'black' : 'red';
+      }
+      
+      // Check for game over
+      const gameOver = checkGameOver(game.board, game.currentTurn === 'red' ? 'black' : 'red');
+      
+      if (gameOver.gameOver && gameOver.winner) {
+        game.winner = gameOver.winner;
+        const winnerId = gameOver.winner === 'red' ? game.playerRed : game.playerBlack;
+        
+        try {
+          await finishMatch(message.matchId, winnerId);
+        } catch (dbError) {
+          // Non-critical - game can end even if database fails
+          console.error('Error finishing match in database (non-critical):', dbError);
+        }
+        
+        io.to(`match:${message.matchId}`).emit('GAME_OVER', {
+          type: 'GAME_OVER',
+          winner: gameOver.winner,
+        } as ServerMessage);
+        
+        // Cleanup after a delay
+        setTimeout(() => {
+          activeGames.delete(message.matchId);
+          playerToGame.delete(game.playerRed);
+          playerToGame.delete(game.playerBlack);
+        }, 60000); // Clean up after 1 minute
+      } else {
+        // Broadcast move
+        const moveAcceptedMessage = {
+          type: 'MOVE_ACCEPTED',
+          board: game.board,
+          nextTurn: game.currentTurn,
+          from: message.from,
+          to: message.to,
+          canContinueJump: game.canContinueJump,
+          continueJumpFrom: game.continueJumpFrom,
+        } as ServerMessage;
+        console.log(`[MOVE] Broadcasting MOVE_ACCEPTED to match:${message.matchId}`);
+        console.log(`[MOVE] Board length: ${moveAcceptedMessage.board?.length}, Next turn: ${moveAcceptedMessage.nextTurn}`);
+        // Emit to both the match room and directly to the socket to ensure delivery
+        io.to(`match:${message.matchId}`).emit('MOVE_ACCEPTED', moveAcceptedMessage);
+        socket.emit('MOVE_ACCEPTED', moveAcceptedMessage);
+        console.log(`[MOVE] MOVE_ACCEPTED sent to socket ${socket.id}`);
+      }
+    } catch (error) {
+      console.error('[MOVE] Error processing move:', error);
+      socket.emit('MOVE_REJECTED', { type: 'MOVE_REJECTED', reason: `Server error: ${error instanceof Error ? error.message : 'Unknown error'}` } as ServerMessage);
     }
   });
   
