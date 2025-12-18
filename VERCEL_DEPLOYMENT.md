@@ -58,7 +58,7 @@ Railway is recommended because it's free to start and easy to set up.
 3. **Configure Service**
    - Railway will auto-detect your project
    - The `railway.json` file should configure it automatically
-   - If not, set Start Command: `npx tsx server.js`
+   - If not, set Start Command: `npx tsx server.ts`
 
 4. **Add Environment Variables**
    - Click on your service → Variables
@@ -96,7 +96,7 @@ Railway is recommended because it's free to start and easy to set up.
 2. Create new "Web Service"
 3. Connect your GitHub repository
 4. Configure:
-   - Start Command: `npx tsx server.js`
+   - Start Command: `npx tsx server.ts`
    - Environment Variables:
      - `CLIENT_URL=https://your-app.vercel.app`
      - `POSTGRES_URL=your_postgres_url`

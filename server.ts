@@ -48,11 +48,11 @@ const io = new Server(httpServer, {
 });
 
 // In-memory game state
-const lobbies = new Map();
-const activeGames = new Map();
-const playerToGame = new Map(); // playerId -> matchId
-const playerDisconnectTimers = new Map();
-const rematchRequests = new Map(); // matchId -> Set of playerIds who requested rematch
+const lobbies = new Map<string, Lobby>();
+const activeGames = new Map<string, GameState>();
+const playerToGame = new Map<string, string>(); // playerId -> matchId
+const playerDisconnectTimers = new Map<string, NodeJS.Timeout>();
+const rematchRequests = new Map<string, Set<string>>(); // matchId -> Set of playerIds who requested rematch
 
 // Clean up lobby after a delay (in case of errors)
 function cleanupLobby(lobbyId: string) {
