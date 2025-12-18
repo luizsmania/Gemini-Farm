@@ -164,11 +164,18 @@ PORT=3000 (auto-set by Railway/Render)
 
 ## Troubleshooting
 
-### "Failed to connect to server" or "Server did not respond"
+### "Failed to connect to server" or "Server did not respond" or "Connection refused"
 - **Check Railway/Render service is running**
-  - Go to Railway/Render dashboard
+  - Go to Railway/Render dashboard → Your service → Logs
+  - Look for: `✓ Checkers WebSocket server running on port...`
+  - If you see errors, the server crashed on startup
   - Verify the service shows as "Active" or "Running"
-  - Check logs for any startup errors
+  
+- **Test the health endpoint**
+  - Visit: `https://your-railway-app.up.railway.app/health`
+  - Should return JSON: `{"status":"ok",...}`
+  - If this fails, the server isn't running or accessible
+  - If this works but WebSocket doesn't, it's a Socket.IO configuration issue
   
 - **Verify `VITE_WS_URL` is set correctly in Vercel**
   - Go to Vercel → Settings → Environment Variables

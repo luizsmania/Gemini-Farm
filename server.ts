@@ -536,24 +536,54 @@ const PORT = process.env.PORT || 3001;
 
 async function startServer() {
   try {
-    // Initialize database schema
-    await initDatabase();
-    console.log('Database initialized');
-  } catch (error) {
-    console.error('Error initializing database:', error);
-    // Continue anyway - database might already be initialized
-  }
-
-  httpServer.listen(PORT, '0.0.0.0', () => {
-    console.log(`Checkers WebSocket server running on port ${PORT}`);
-    const corsOrigin = getCorsOrigin();
-    console.log(`CORS enabled for: ${typeof corsOrigin === 'string' ? corsOrigin : corsOrigin === true ? 'all origins' : 'none'}`);
-    console.log(`Health check: http://localhost:${PORT}/health`);
+    console.log('Starting Checkers WebSocket server...');
+    console.log(`Node version: ${process.version}`);
+    console.log(`Port: ${PORT}`);
     console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  });
+    
+    // Initialize database schema
+    try {
+      await initDatabase();
+      console.log('✓ Database initialized');
+    } catch (error) {
+      console.error('⚠ Error initializing database:', error);
+      // Continue anyway - database might already be initialized
+    }
+
+    httpServer.listen(PORT, '0.0.0.0', () => {
+      console.log(`✓ Checkers WebSocket server running on port ${PORT}`);
+      const corsOrigin = getCorsOrigin();
+      console.log(`✓ CORS enabled for: ${typeof corsOrigin === 'string' ? corsOrigin : corsOrigin === true ? 'all origins' : 'none'}`);
+      console.log(`✓ Health check: http://localhost:${PORT}/health`);
+      console.log(`✓ Socket.IO server ready for connections`);
+    });
+
+    httpServer.on('error', (error: NodeJS.ErrnoException) => {
+      console.error('✗ HTTP server error:', error);
+      if (error.code === 'EADDRINUSE') {
+        console.error(`Port ${PORT} is already in use`);
+      }
+      process.exit(1);
+    });
+
+    process.on('uncaughtException', (error) => {
+      console.error('✗ Uncaught exception:', error);
+      process.exit(1);
+    });
+
+    process.on('unhandledRejection', (reason, promise) => {
+      console.error('✗ Unhandled rejection at:', promise, 'reason:', reason);
+    });
+  } catch (error) {
+    console.error('✗ Failed to start server:', error);
+    process.exit(1);
+  }
 }
 
-startServer();
+startServer().catch((error) => {
+  console.error('✗ Fatal error starting server:', error);
+  process.exit(1);
+});
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
