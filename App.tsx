@@ -76,6 +76,7 @@ function App() {
         initialBoard={gameState.board}
         yourColor={gameState.yourColor}
         playerId={playerId}
+        nickname={nickname}
         onLeave={handleLeaveGame}
       />
     );

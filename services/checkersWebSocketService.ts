@@ -71,6 +71,7 @@ class CheckersWebSocketService {
         'PLAYER_DISCONNECTED',
         'REMATCH_REQUEST',
         'MATCH_ENDED',
+        'CHAT_MESSAGE',
       ];
 
       messageTypes.forEach((type) => {
@@ -176,6 +177,10 @@ class CheckersWebSocketService {
 
   leaveMatch(matchId: string): void {
     this.send({ type: 'LEAVE_MATCH', matchId });
+  }
+
+  sendChatMessage(matchId: string, message: string): void {
+    this.send({ type: 'CHAT_MESSAGE', matchId, message });
   }
 
   isConnected(): boolean {

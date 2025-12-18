@@ -9,6 +9,7 @@ interface CheckersGameProps {
   initialBoard: Board;
   yourColor: Color;
   playerId?: string;
+  nickname?: string;
   onLeave: () => void;
 }
 
@@ -19,6 +20,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   initialBoard,
   yourColor,
   playerId,
+  nickname,
   onLeave,
 }) => {
   const [matchId, setMatchId] = useState<string>(initialMatchId);
@@ -33,6 +35,9 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [opponentDisconnected, setOpponentDisconnected] = useState(false);
   const [showRematch, setShowRematch] = useState(false);
+  const [chatMessages, setChatMessages] = useState<Array<{ senderNickname: string; message: string; timestamp: number; isOwn: boolean }>>([]);
+  const [chatInput, setChatInput] = useState('');
+  const chatMessagesEndRef = useRef<HTMLDivElement>(null);
   const moveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const errorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -112,11 +117,25 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         setContinueJumpFrom(null);
         setError(null);
         setShowRematch(false);
+        setChatMessages([]); // Clear chat on rematch
         // Clear any pending timeouts
         if (moveTimeoutRef.current) {
           clearTimeout(moveTimeoutRef.current);
           moveTimeoutRef.current = null;
         }
+      }
+    };
+
+    const handleChatMessage = (message: ServerMessage) => {
+      if (message.type === 'CHAT_MESSAGE' && message.senderNickname && message.message) {
+        // Check if this is our own message by comparing nickname
+        const isOwn = nickname ? message.senderNickname === nickname : false;
+        setChatMessages(prev => [...prev, {
+          senderNickname: message.senderNickname!,
+          message: message.message!,
+          timestamp: message.timestamp || Date.now(),
+          isOwn
+        }]);
       }
     };
 
@@ -126,6 +145,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     checkersWebSocketService.on('PLAYER_DISCONNECTED', handlePlayerDisconnected);
     checkersWebSocketService.on('REMATCH_REQUEST', handleRematchRequest);
     checkersWebSocketService.on('GAME_START', handleGameStart);
+    checkersWebSocketService.on('CHAT_MESSAGE', handleChatMessage);
 
     return () => {
       checkersWebSocketService.off('MOVE_ACCEPTED', handleMoveAccepted);
@@ -134,6 +154,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       checkersWebSocketService.off('PLAYER_DISCONNECTED', handlePlayerDisconnected);
       checkersWebSocketService.off('REMATCH_REQUEST', handleRematchRequest);
       checkersWebSocketService.off('GAME_START', handleGameStart);
+      checkersWebSocketService.off('CHAT_MESSAGE', handleChatMessage);
       // Clear timeouts on unmount
       if (moveTimeoutRef.current) {
         clearTimeout(moveTimeoutRef.current);
@@ -142,7 +163,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         clearTimeout(errorTimeoutRef.current);
       }
     };
-  }, []);
+  }, [nickname]);
 
   const getPieceDisplay = (piece: Piece): { emoji: string; isKing: boolean } => {
     switch (piece) {
@@ -517,8 +538,22 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
 
   const handleLeave = () => {
     checkersWebSocketService.leaveMatch(matchId);
+    setChatMessages([]); // Clear chat when leaving
     onLeave();
   };
+
+  const handleSendChat = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (chatInput.trim() && matchId) {
+      checkersWebSocketService.sendChatMessage(matchId, chatInput.trim());
+      setChatInput('');
+    }
+  };
+
+  // Auto-scroll chat to bottom when new messages arrive
+  useEffect(() => {
+    chatMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
 
   const renderSquare = (displayIndex: number) => {
     // Convert display index to board index
@@ -620,6 +655,52 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
             }}
           >
             {Array.from({ length: BOARD_SIZE * BOARD_SIZE }, (_, i) => renderSquare(i))}
+          </div>
+
+          {/* Chat Section */}
+          <div className="mb-3 sm:mb-4 bg-slate-700/50 rounded-lg p-3 sm:p-4">
+            <h3 className="text-sm sm:text-base font-semibold text-white mb-2">Chat</h3>
+            <div className="bg-slate-800 rounded-lg p-2 sm:p-3 mb-2 h-32 sm:h-40 overflow-y-auto">
+              {chatMessages.length === 0 ? (
+                <p className="text-xs sm:text-sm text-slate-400 text-center py-4">No messages yet. Start chatting!</p>
+              ) : (
+                <div className="space-y-2">
+                  {chatMessages.map((msg, idx) => (
+                    <div
+                      key={idx}
+                      className={`flex flex-col ${msg.isOwn ? 'items-end' : 'items-start'}`}
+                    >
+                      <div className={`text-xs text-slate-400 mb-0.5 ${msg.isOwn ? 'text-right' : 'text-left'}`}>
+                        {msg.senderNickname}
+                      </div>
+                      <div
+                        className={`max-w-[80%] sm:max-w-[70%] rounded-lg px-2 sm:px-3 py-1 sm:py-2 text-xs sm:text-sm ${
+                          msg.isOwn
+                            ? 'bg-purple-600 text-white'
+                            : 'bg-slate-600 text-slate-100'
+                        }`}
+                      >
+                        {msg.message}
+                      </div>
+                    </div>
+                  ))}
+                  <div ref={chatMessagesEndRef} />
+                </div>
+              )}
+            </div>
+            <form onSubmit={handleSendChat} className="flex gap-2">
+              <input
+                type="text"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                placeholder="Type a message..."
+                className="flex-1 px-3 py-2 text-sm sm:text-base bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                maxLength={200}
+              />
+              <Button type="submit" size="sm" disabled={!chatInput.trim()}>
+                Send
+              </Button>
+            </form>
           </div>
 
           {showRematch && !winner && (

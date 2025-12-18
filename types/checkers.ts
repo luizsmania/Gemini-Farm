@@ -26,16 +26,17 @@ export interface GameState {
 
 // WebSocket message types
 export interface ClientMessage {
-  type: 'SET_NICKNAME' | 'CREATE_LOBBY' | 'JOIN_LOBBY' | 'MOVE' | 'REMATCH_ACCEPT' | 'LEAVE_MATCH';
+  type: 'SET_NICKNAME' | 'CREATE_LOBBY' | 'JOIN_LOBBY' | 'MOVE' | 'REMATCH_ACCEPT' | 'LEAVE_MATCH' | 'CHAT_MESSAGE';
   nickname?: string;
   lobbyId?: string;
   from?: number;
   to?: number;
   matchId?: string;
+  message?: string;
 }
 
 export interface ServerMessage {
-  type: 'NICKNAME_SET' | 'LOBBY_LIST' | 'GAME_START' | 'MOVE_ACCEPTED' | 'MOVE_REJECTED' | 'GAME_OVER' | 'ERROR' | 'PLAYER_DISCONNECTED' | 'REMATCH_REQUEST' | 'MATCH_ENDED';
+  type: 'NICKNAME_SET' | 'LOBBY_LIST' | 'GAME_START' | 'MOVE_ACCEPTED' | 'MOVE_REJECTED' | 'GAME_OVER' | 'ERROR' | 'PLAYER_DISCONNECTED' | 'REMATCH_REQUEST' | 'MATCH_ENDED' | 'CHAT_MESSAGE';
   lobbies?: LobbyInfo[];
   matchId?: string;
   yourColor?: Color;
@@ -50,6 +51,8 @@ export interface ServerMessage {
   message?: string;
   playerId?: string;
   nickname?: string;
+  senderNickname?: string;
+  timestamp?: number;
 }
 
 export interface LobbyInfo {

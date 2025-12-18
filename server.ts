@@ -53,6 +53,7 @@ const activeGames = new Map<string, GameState>();
 const playerToGame = new Map<string, string>(); // playerId -> matchId
 const playerDisconnectTimers = new Map<string, NodeJS.Timeout>();
 const rematchRequests = new Map<string, Set<string>>(); // matchId -> Set of playerIds who requested rematch
+const playerNicknames = new Map<string, string>(); // playerId -> nickname
 
 // Clean up lobby after a delay (in case of errors)
 function cleanupLobby(lobbyId: string) {
@@ -265,6 +266,7 @@ io.on('connection', (socket) => {
       }
       
       currentNickname = nickname;
+      playerNicknames.set(currentPlayerId, currentNickname);
       
       // Join player-specific room
       socket.join(`player:${currentPlayerId}`);
@@ -533,6 +535,31 @@ io.on('connection', (socket) => {
         message: 'Opponent wants to play again',
       } as ServerMessage);
     }
+  });
+  
+  // Chat message
+  socket.on('CHAT_MESSAGE', (message: ClientMessage) => {
+    if (!currentPlayerId || !message.matchId || !message.message) return;
+    
+    const game = activeGames.get(message.matchId);
+    if (!game) return;
+    
+    // Verify player is in this match
+    if (currentPlayerId !== game.playerRed && currentPlayerId !== game.playerBlack) {
+      return;
+    }
+    
+    const senderNickname = playerNicknames.get(currentPlayerId) || 'Unknown';
+    const chatMessage: ServerMessage = {
+      type: 'CHAT_MESSAGE',
+      matchId: message.matchId,
+      senderNickname,
+      message: message.message.trim().substring(0, 200), // Limit message length
+      timestamp: Date.now(),
+    };
+    
+    // Broadcast to both players in the match
+    io.to(`match:${message.matchId}`).emit('CHAT_MESSAGE', chatMessage);
   });
   
   // Leave match
