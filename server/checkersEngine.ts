@@ -176,7 +176,7 @@ export function validateMove(
     return { valid: false, reason: 'Must continue jump from previous position' };
   }
   
-  const isKing = isKing(piece);
+  const pieceIsKing = isKing(piece);
   const { row: fromRow, col: fromCol } = indexToPos(from);
   const { row: toRow, col: toCol } = indexToPos(to);
   
@@ -229,7 +229,7 @@ export function validateMove(
   }
   
   // Validate regular move direction (only for non-kings)
-  if (isRegularMove && !isKing) {
+  if (isRegularMove && !pieceIsKing) {
     if (pieceColor === 'red' && rowDiff > 0) {
       return { valid: false, reason: 'Red pieces can only move up' };
     }
@@ -307,8 +307,8 @@ export function canContinueJump(board: Board, position: number, currentTurn: Col
   const piece = board[position];
   if (piece === null) return false;
   
-  const isKing = isKing(piece);
-  const captures = findCaptures(board, position, currentTurn, isKing);
+  const pieceIsKing = isKing(piece);
+  const captures = findCaptures(board, position, currentTurn, pieceIsKing);
   return captures.length > 0;
 }
 
