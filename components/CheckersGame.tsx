@@ -122,6 +122,84 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     };
   };
 
+  // Calculate legal moves for a piece
+  const calculateLegalMoves = useCallback((position: number): number[] => {
+    const piece = board[position];
+    if (piece === null) return [];
+    
+    const pieceColor = (piece === 'r' || piece === 'R') ? 'red' : 'black';
+    if (pieceColor !== currentTurn) return [];
+    
+    const { row, col } = indexToPos(position);
+    const isKing = piece === 'R' || piece === 'B';
+    const moves: number[] = [];
+    
+    // Check for captures first (mandatory)
+    const captures: number[] = [];
+    const captureDirections = [
+      { rowDir: -2, colDir: -2 }, // Up-left capture
+      { rowDir: -2, colDir: 2 },  // Up-right capture
+      { rowDir: 2, colDir: -2 },  // Down-left capture
+      { rowDir: 2, colDir: 2 },   // Down-right capture
+    ];
+    
+    for (const { rowDir, colDir } of captureDirections) {
+      const newRow = row + rowDir;
+      const newCol = col + colDir;
+      const jumpOverRow = row + rowDir / 2;
+      const jumpOverCol = col + colDir / 2;
+      
+      if (newRow >= 0 && newRow < BOARD_SIZE && newCol >= 0 && newCol < BOARD_SIZE) {
+        const newIndex = newRow * BOARD_SIZE + newCol;
+        const jumpOverIndex = jumpOverRow * BOARD_SIZE + jumpOverCol;
+        
+        if (board[newIndex] === null && board[jumpOverIndex] !== null) {
+          const jumpedPiece = board[jumpOverIndex]!;
+          const jumpedColor = (jumpedPiece === 'r' || jumpedPiece === 'R') ? 'red' : 'black';
+          if (jumpedColor !== pieceColor) {
+            captures.push(newIndex);
+          }
+        }
+      }
+    }
+    
+    if (captures.length > 0) {
+      return captures;
+    }
+    
+    // Regular moves (only if no captures available)
+    const directions = isKing 
+      ? [
+          { rowDir: -1, colDir: -1 }, // Up-left
+          { rowDir: -1, colDir: 1 },  // Up-right
+          { rowDir: 1, colDir: -1 },  // Down-left
+          { rowDir: 1, colDir: 1 },   // Down-right
+        ]
+      : pieceColor === 'red'
+      ? [
+          { rowDir: -1, colDir: -1 }, // Up-left
+          { rowDir: -1, colDir: 1 },  // Up-right
+        ]
+      : [
+          { rowDir: 1, colDir: -1 },  // Down-left
+          { rowDir: 1, colDir: 1 },   // Down-right
+        ];
+    
+    for (const { rowDir, colDir } of directions) {
+      const newRow = row + rowDir;
+      const newCol = col + colDir;
+      
+      if (newRow >= 0 && newRow < BOARD_SIZE && newCol >= 0 && newCol < BOARD_SIZE) {
+        const newIndex = newRow * BOARD_SIZE + newCol;
+        if (board[newIndex] === null) {
+          moves.push(newIndex);
+        }
+      }
+    }
+    
+    return moves;
+  }, [board, currentTurn]);
+
   const handleSquareClick = useCallback((index: number) => {
     const piece = board[index];
     const isYourPiece = piece !== null && 
@@ -143,8 +221,9 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       }
       if (selectedSquare === continueJumpFrom || index === continueJumpFrom) {
         setSelectedSquare(continueJumpFrom);
-        // Calculate legal moves for continuing jump (simplified - server will validate)
-        setLegalMoves([]);
+        // Calculate legal moves for continuing jump
+        const moves = calculateLegalMoves(continueJumpFrom);
+        setLegalMoves(moves);
         return;
       }
     }
@@ -152,8 +231,13 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     if (selectedSquare === null) {
       if (isYourPiece) {
         setSelectedSquare(index);
-        // Calculate legal moves (simplified - server will validate)
-        setLegalMoves([]);
+        // Calculate and display legal moves
+        const moves = calculateLegalMoves(index);
+        setLegalMoves(moves);
+        console.log('Selected piece at', index, 'Legal moves:', moves);
+        if (moves.length === 0) {
+          setError('No legal moves available for this piece');
+        }
       }
     } else {
       if (selectedSquare === index) {
@@ -163,14 +247,25 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       } else if (isYourPiece) {
         // Select different piece
         setSelectedSquare(index);
-        setLegalMoves([]);
+        const moves = calculateLegalMoves(index);
+        setLegalMoves(moves);
       } else {
-        // Try to move
-        checkersWebSocketService.makeMove(matchId, selectedSquare, index);
-        setError(null);
+        // Try to move - check if it's a legal move
+        if (legalMoves.length > 0 && legalMoves.includes(index)) {
+          console.log('Making move from', selectedSquare, 'to', index);
+          checkersWebSocketService.makeMove(matchId, selectedSquare, index);
+          setError(null);
+          // Don't clear selection yet - wait for server response
+        } else if (legalMoves.length === 0) {
+          setError('No legal moves available. Select a different piece.');
+          setSelectedSquare(null);
+          setLegalMoves([]);
+        } else {
+          setError(`Invalid move - select a highlighted square. Legal moves: ${legalMoves.join(', ')}`);
+        }
       }
     }
-  }, [board, selectedSquare, yourColor, currentTurn, canContinueJump, continueJumpFrom, winner, matchId]);
+  }, [board, selectedSquare, yourColor, currentTurn, canContinueJump, continueJumpFrom, winner, matchId, legalMoves, calculateLegalMoves]);
 
   const handleRematch = () => {
     checkersWebSocketService.acceptRematch(matchId);
