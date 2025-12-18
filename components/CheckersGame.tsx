@@ -246,8 +246,11 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         if (moves.length === 0) {
           setError('No legal moves available for this piece');
         }
+<<<<<<< HEAD
       } else {
         console.log('Clicked on empty square or opponent piece, but no piece selected');
+=======
+>>>>>>> d4d370dd5a194e5af934ccce69d603fd62af3a25
       }
     } else {
       if (selectedSquare === index) {
@@ -261,19 +264,28 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         setLegalMoves(moves);
       } else {
         // Try to move - check if it's a legal move
+<<<<<<< HEAD
         console.log('Attempting move - Selected:', selectedSquare, 'Target:', index, 'Legal moves:', legalMoves);
+=======
+>>>>>>> d4d370dd5a194e5af934ccce69d603fd62af3a25
         if (legalMoves.length > 0 && legalMoves.includes(index)) {
           console.log('Making move from', selectedSquare, 'to', index);
           checkersWebSocketService.makeMove(matchId, selectedSquare, index);
           setError(null);
           // Don't clear selection yet - wait for server response
         } else if (legalMoves.length === 0) {
+<<<<<<< HEAD
           console.log('No legal moves available');
+=======
+>>>>>>> d4d370dd5a194e5af934ccce69d603fd62af3a25
           setError('No legal moves available. Select a different piece.');
           setSelectedSquare(null);
           setLegalMoves([]);
         } else {
+<<<<<<< HEAD
           console.log('Invalid move - not in legal moves list');
+=======
+>>>>>>> d4d370dd5a194e5af934ccce69d603fd62af3a25
           setError(`Invalid move - select a highlighted square. Legal moves: ${legalMoves.join(', ')}`);
         }
       }
