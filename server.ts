@@ -228,10 +228,13 @@ io.on('connection', (socket) => {
   const originalOnevent = socket.onevent;
   socket.onevent = function (packet: any) {
     const args = packet.data || [];
-    if (args[0] === 'MOVE') {
-      console.log(`[Socket ${socket.id}] MOVE event received!`, JSON.stringify(args[1]));
-    } else {
-      console.log(`[Socket ${socket.id}] Event received:`, args[0]);
+    const eventName = args[0];
+    if (eventName === 'MOVE') {
+      console.log(`[Socket ${socket.id}] ========== MOVE EVENT RECEIVED ==========`);
+      console.log(`[Socket ${socket.id}] MOVE data:`, JSON.stringify(args[1]));
+      console.log(`[Socket ${socket.id}] Full packet:`, JSON.stringify(packet));
+    } else if (eventName) {
+      console.log(`[Socket ${socket.id}] Event received:`, eventName);
     }
     originalOnevent.call(this, packet);
   };
@@ -354,16 +357,18 @@ io.on('connection', (socket) => {
   
   // Make a move
   socket.on('MOVE', async (message: any) => {
+    console.log(`[MOVE] ========== MOVE HANDLER CALLED ==========`);
+    console.log(`[MOVE] Socket ID: ${socket.id}`);
+    console.log(`[MOVE] Raw message:`, message);
+    console.log(`[MOVE] Message keys:`, message ? Object.keys(message) : 'null');
+    
     try {
-      console.log(`[MOVE] Handler called for socket ${socket.id}`);
-      console.log(`[MOVE] Message received:`, message);
-      console.log(`[MOVE] Message type:`, typeof message, 'Is object:', message && typeof message === 'object');
-      console.log(`[MOVE] Current player ID:`, currentPlayerId);
-      
       // Ensure message is in correct format
       const moveMessage: ClientMessage = message && typeof message === 'object' ? message : { type: 'MOVE', ...message };
       
       console.log(`[MOVE] Processed message:`, JSON.stringify(moveMessage));
+      console.log(`[MOVE] Current player ID:`, currentPlayerId);
+      
       if (!currentPlayerId) {
         console.log('[MOVE] Rejected: Not authenticated');
         socket.emit('MOVE_REJECTED', { type: 'MOVE_REJECTED', reason: 'Not authenticated' } as ServerMessage);
@@ -477,10 +482,16 @@ io.on('connection', (socket) => {
         } as ServerMessage;
         console.log(`[MOVE] Broadcasting MOVE_ACCEPTED to match:${moveMessage.matchId}`);
         console.log(`[MOVE] Board length: ${moveAcceptedMessage.board?.length}, Next turn: ${moveAcceptedMessage.nextTurn}`);
+        console.log(`[MOVE] Full message:`, JSON.stringify(moveAcceptedMessage));
+        
         // Emit to both the match room and directly to the socket to ensure delivery
         io.to(`match:${moveMessage.matchId}`).emit('MOVE_ACCEPTED', moveAcceptedMessage);
+        console.log(`[MOVE] Emitted to match room: match:${moveMessage.matchId}`);
+        
         socket.emit('MOVE_ACCEPTED', moveAcceptedMessage);
-        console.log(`[MOVE] MOVE_ACCEPTED sent to socket ${socket.id}`);
+        console.log(`[MOVE] Emitted directly to socket ${socket.id}`);
+        console.log(`[MOVE] Socket connected: ${socket.connected}, Socket ID: ${socket.id}`);
+        console.log(`[MOVE] ========== MOVE HANDLER COMPLETE ==========`);
       }
     } catch (error) {
       console.error('[MOVE] Error processing move:', error);
