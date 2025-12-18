@@ -658,23 +658,23 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           </div>
 
           {/* Chat Section */}
-          <div className="mb-3 sm:mb-4 bg-slate-700/50 rounded-lg p-3 sm:p-4">
-            <h3 className="text-sm sm:text-base font-semibold text-white mb-2">Chat</h3>
-            <div className="bg-slate-800 rounded-lg p-2 sm:p-3 mb-2 h-32 sm:h-40 overflow-y-auto">
+          <div className="mb-3 sm:mb-4 bg-slate-700/50 rounded-lg p-2 sm:p-3 md:p-4">
+            <h3 className="text-xs sm:text-sm md:text-base font-semibold text-white mb-1.5 sm:mb-2">Chat</h3>
+            <div className="bg-slate-800 rounded-lg p-1.5 sm:p-2 md:p-3 mb-2 h-24 sm:h-32 md:h-40 overflow-y-auto">
               {chatMessages.length === 0 ? (
-                <p className="text-xs sm:text-sm text-slate-400 text-center py-4">No messages yet. Start chatting!</p>
+                <p className="text-xs sm:text-sm text-slate-400 text-center py-3 sm:py-4">No messages yet. Start chatting!</p>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-1.5 sm:space-y-2">
                   {chatMessages.map((msg, idx) => (
                     <div
                       key={idx}
                       className={`flex flex-col ${msg.isOwn ? 'items-end' : 'items-start'}`}
                     >
-                      <div className={`text-xs text-slate-400 mb-0.5 ${msg.isOwn ? 'text-right' : 'text-left'}`}>
+                      <div className={`text-[10px] sm:text-xs text-slate-400 mb-0.5 ${msg.isOwn ? 'text-right' : 'text-left'}`}>
                         {msg.senderNickname}
                       </div>
                       <div
-                        className={`max-w-[80%] sm:max-w-[70%] rounded-lg px-2 sm:px-3 py-1 sm:py-2 text-xs sm:text-sm ${
+                        className={`max-w-[85%] sm:max-w-[75%] md:max-w-[70%] rounded-lg px-2 sm:px-2.5 md:px-3 py-1 sm:py-1.5 md:py-2 text-xs sm:text-sm break-words ${
                           msg.isOwn
                             ? 'bg-purple-600 text-white'
                             : 'bg-slate-600 text-slate-100'
@@ -688,16 +688,25 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
                 </div>
               )}
             </div>
-            <form onSubmit={handleSendChat} className="flex gap-2">
+            <form onSubmit={handleSendChat} className="flex flex-col sm:flex-row gap-2">
               <input
                 type="text"
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
                 placeholder="Type a message..."
-                className="flex-1 px-3 py-2 text-sm sm:text-base bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="flex-1 px-2.5 sm:px-3 py-2 sm:py-2.5 text-sm sm:text-base bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 touch-manipulation min-h-[44px] sm:min-h-0"
                 maxLength={200}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck="false"
               />
-              <Button type="submit" size="sm" disabled={!chatInput.trim()}>
+              <Button 
+                type="submit" 
+                size="sm" 
+                disabled={!chatInput.trim()}
+                className="w-full sm:w-auto touch-manipulation min-h-[44px] sm:min-h-0"
+              >
                 Send
               </Button>
             </form>
