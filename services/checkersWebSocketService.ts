@@ -76,8 +76,17 @@ class CheckersWebSocketService {
       messageTypes.forEach((type) => {
         this.socket?.on(type, (data: any) => {
           console.log('Received server message:', type, data);
+          // Handle MOVE_ACCEPTED specially to ensure board is included
+          if (type === 'MOVE_ACCEPTED') {
+            console.log('MOVE_ACCEPTED received with board:', data.board ? `Board length: ${data.board.length}` : 'NO BOARD');
+          }
           this.emit(type, { type, ...data } as ServerMessage);
         });
+      });
+      
+      // Also listen for any errors
+      this.socket.on('error', (error) => {
+        console.error('Socket error:', error);
       });
 
       // Timeout if connection takes too long

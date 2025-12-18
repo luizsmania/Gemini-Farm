@@ -353,22 +353,30 @@ io.on('connection', (socket) => {
   });
   
   // Make a move
-  socket.on('MOVE', async (message: ClientMessage) => {
+  socket.on('MOVE', async (message: any) => {
     try {
-      console.log(`[MOVE] Received from socket ${socket.id}, player ${currentPlayerId}:`, JSON.stringify(message));
+      console.log(`[MOVE] Handler called for socket ${socket.id}`);
+      console.log(`[MOVE] Message received:`, message);
+      console.log(`[MOVE] Message type:`, typeof message, 'Is object:', message && typeof message === 'object');
+      console.log(`[MOVE] Current player ID:`, currentPlayerId);
+      
+      // Ensure message is in correct format
+      const moveMessage: ClientMessage = message && typeof message === 'object' ? message : { type: 'MOVE', ...message };
+      
+      console.log(`[MOVE] Processed message:`, JSON.stringify(moveMessage));
       if (!currentPlayerId) {
         console.log('[MOVE] Rejected: Not authenticated');
         socket.emit('MOVE_REJECTED', { type: 'MOVE_REJECTED', reason: 'Not authenticated' } as ServerMessage);
         return;
       }
       
-      if (message.from === undefined || message.to === undefined || !message.matchId) {
-        console.log('[MOVE] Rejected: Invalid move data');
+      if (moveMessage.from === undefined || moveMessage.to === undefined || !moveMessage.matchId) {
+        console.log('[MOVE] Rejected: Invalid move data', { from: moveMessage.from, to: moveMessage.to, matchId: moveMessage.matchId });
         socket.emit('MOVE_REJECTED', { type: 'MOVE_REJECTED', reason: 'Invalid move data' } as ServerMessage);
         return;
       }
       
-      const game = activeGames.get(message.matchId);
+      const game = activeGames.get(moveMessage.matchId);
       if (!game) {
         console.log('[MOVE] Rejected: Game not found');
         socket.emit('MOVE_REJECTED', { type: 'MOVE_REJECTED', reason: 'Game not found' } as ServerMessage);
@@ -386,8 +394,8 @@ io.on('connection', (socket) => {
       // Validate move
       const validation = validateMove(
         game.board,
-        message.from,
-        message.to,
+        moveMessage.from!,
+        moveMessage.to!,
         game.currentTurn,
         game.canContinueJump,
         game.continueJumpFrom
@@ -402,27 +410,27 @@ io.on('connection', (socket) => {
       console.log('[MOVE] Validated, applying move...');
       
       // Apply move
-      const result = applyMove(game.board, message.from, message.to, game.currentTurn);
+      const result = applyMove(game.board, moveMessage.from!, moveMessage.to!, game.currentTurn);
       game.board = result.newBoard;
-      game.lastMove = { from: message.from, to: message.to };
+      game.lastMove = { from: moveMessage.from!, to: moveMessage.to! };
       
       // Save move to database - count moves in game state
       if (!game.moveCount) game.moveCount = 0;
       game.moveCount++;
       try {
-        await addMove(message.matchId, game.moveCount, message.from, message.to);
+        await addMove(moveMessage.matchId!, game.moveCount, moveMessage.from!, moveMessage.to!);
       } catch (dbError) {
         // Non-critical - game continues even if move isn't saved
         console.error('Error saving move to database (non-critical):', dbError);
       }
       
       // Check for continued jump
-      const canJump = canContinueJump(game.board, message.to, game.currentTurn);
+      const canJump = canContinueJump(game.board, moveMessage.to!, game.currentTurn);
       
       if (canJump && result.captures.length > 0) {
         // Continue jump
         game.canContinueJump = true;
-        game.continueJumpFrom = message.to;
+        game.continueJumpFrom = moveMessage.to!;
         game.currentTurn = playerColor; // Keep same turn
       } else {
         // Switch turn
@@ -439,20 +447,20 @@ io.on('connection', (socket) => {
         const winnerId = gameOver.winner === 'red' ? game.playerRed : game.playerBlack;
         
         try {
-          await finishMatch(message.matchId, winnerId);
+          await finishMatch(moveMessage.matchId!, winnerId);
         } catch (dbError) {
           // Non-critical - game can end even if database fails
           console.error('Error finishing match in database (non-critical):', dbError);
         }
         
-        io.to(`match:${message.matchId}`).emit('GAME_OVER', {
+        io.to(`match:${moveMessage.matchId}`).emit('GAME_OVER', {
           type: 'GAME_OVER',
           winner: gameOver.winner,
         } as ServerMessage);
         
         // Cleanup after a delay
         setTimeout(() => {
-          activeGames.delete(message.matchId);
+          activeGames.delete(moveMessage.matchId!);
           playerToGame.delete(game.playerRed);
           playerToGame.delete(game.playerBlack);
         }, 60000); // Clean up after 1 minute
@@ -462,15 +470,15 @@ io.on('connection', (socket) => {
           type: 'MOVE_ACCEPTED',
           board: game.board,
           nextTurn: game.currentTurn,
-          from: message.from,
-          to: message.to,
+          from: moveMessage.from,
+          to: moveMessage.to,
           canContinueJump: game.canContinueJump,
           continueJumpFrom: game.continueJumpFrom,
         } as ServerMessage;
-        console.log(`[MOVE] Broadcasting MOVE_ACCEPTED to match:${message.matchId}`);
+        console.log(`[MOVE] Broadcasting MOVE_ACCEPTED to match:${moveMessage.matchId}`);
         console.log(`[MOVE] Board length: ${moveAcceptedMessage.board?.length}, Next turn: ${moveAcceptedMessage.nextTurn}`);
         // Emit to both the match room and directly to the socket to ensure delivery
-        io.to(`match:${message.matchId}`).emit('MOVE_ACCEPTED', moveAcceptedMessage);
+        io.to(`match:${moveMessage.matchId}`).emit('MOVE_ACCEPTED', moveAcceptedMessage);
         socket.emit('MOVE_ACCEPTED', moveAcceptedMessage);
         console.log(`[MOVE] MOVE_ACCEPTED sent to socket ${socket.id}`);
       }
