@@ -422,8 +422,8 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     if (isSelected) return 'bg-yellow-500/50';
     // Mandatory captures should show even if it's also a legal move for selected piece
     if (isMandatoryCapture) return 'bg-blue-500/60 border-2 border-blue-400';
-    if (isLegalMove) return 'bg-green-500/30';
-    // Highlight last move squares
+    // Don't change background for legal moves - just show dots
+    // Highlight last move destination square only
     if (isLastMove) return 'bg-purple-500/40 border-2 border-purple-400';
     const { row, col } = indexToPos(index);
     return isDarkSquare(row, col) ? 'bg-amber-900' : 'bg-amber-50';
@@ -980,10 +980,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         const moves = calculateLegalMoves(index);
         setLegalMoves(moves);
         console.log('Selected piece at', index, 'Legal moves:', moves);
-        if (moves.length === 0) {
-          setError('No legal moves available for this piece');
-          playSound('error');
-        }
+        // No error message if no legal moves, just select the piece
       } else {
         console.log('Clicked on empty square or opponent piece, but no piece selected');
       }
@@ -1047,45 +1044,20 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           }, 3000);
         } else if (legalMoves.length === 0) {
           console.log('No legal moves available');
-          setError('No legal moves available. Select a different piece.');
+          // Just clear selection, no error message
           setSelectedSquare(null);
           setLegalMoves([]);
           setMandatoryCaptures([]);
-          } else {
-            // Check if captures are mandatory
-            const allMandatoryCaptures = calculateAllMandatoryCaptures();
-            console.log('Checking mandatory captures:', allMandatoryCaptures);
-            if (allMandatoryCaptures.length > 0) {
-              console.log('Invalid move - captures are mandatory. Showing', allMandatoryCaptures.length, 'mandatory captures');
-              setError('Capture is mandatory! Select a piece that can capture (blue squares).');
-              setMandatoryCaptures(allMandatoryCaptures);
-              playSound('error');
-              // Clear error after 5 seconds
-              if (errorTimeoutRef.current) {
-                clearTimeout(errorTimeoutRef.current);
-              }
-              errorTimeoutRef.current = setTimeout(() => {
-                setError(null);
-                errorTimeoutRef.current = null;
-              }, 5000);
-            } else {
-            console.log('Invalid move - not in legal moves list');
-            setError(`Invalid move - select a highlighted square.`);
-            setMandatoryCaptures([]);
-            playSound('error');
-            // Clear error after 3 seconds
-            if (errorTimeoutRef.current) {
-              clearTimeout(errorTimeoutRef.current);
-            }
-            errorTimeoutRef.current = setTimeout(() => {
-              setError(null);
-              errorTimeoutRef.current = null;
-            }, 3000);
-          }
+        } else {
+          // Invalid move - just clear selection and legal moves, no error message
+          console.log('Invalid move - clearing selection');
+          setSelectedSquare(null);
+          setLegalMoves([]);
+          setMandatoryCaptures([]);
         }
       }
     }
-  }, [board, selectedSquare, yourColor, currentTurn, canContinueJump, continueJumpFrom, winner, matchId, legalMoves, calculateLegalMoves]);
+  }, [board, selectedSquare, yourColor, currentTurn, canContinueJump, continueJumpFrom, winner, matchId, legalMoves, calculateLegalMoves, calculateAllMandatoryCaptures]);
 
   const handleRematch = () => {
     // Use current matchId from state
@@ -1138,7 +1110,8 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     const isSelected = selectedSquare === boardIndex;
     const isLegalMove = legalMoves.includes(boardIndex);
     const isMandatoryCapture = mandatoryCaptures.includes(boardIndex);
-    const isLastMoveSquare = lastMove !== null && (lastMove.from === boardIndex || lastMove.to === boardIndex);
+    // Show only the destination square of the last move (not the source)
+    const isLastMoveSquare = lastMove !== null && lastMove.to === boardIndex;
     const isAnimatingFrom = animatingPiece !== null && animatingPiece.from === boardIndex;
     const isAnimatingTo = animatingPiece !== null && animatingPiece.to === boardIndex;
     
@@ -1170,7 +1143,8 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         }}
         onClick={(e) => {
           // Only handle click if not dragging (drag end handles the move)
-          if (!draggingPiece) {
+          // Also check if this was a drag operation (hasDragged will be set)
+          if (!draggingPiece && !hasDragged) {
             e.preventDefault();
             e.stopPropagation();
             console.log('Square clicked - displayIndex:', displayIndex, 'boardIndex:', boardIndex, 'Piece:', piece, 'Selected:', selectedSquare, 'Legal moves:', legalMoves);
@@ -1212,6 +1186,12 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
             </div>
           );
         })()}
+        {/* Show little circle for legal moves */}
+        {isLegalMove && !piece && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 md:w-3 md:h-3 rounded-full bg-gray-600/60"></div>
+          </div>
+        )}
       </div>
     );
   };
