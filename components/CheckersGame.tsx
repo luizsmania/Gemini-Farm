@@ -167,9 +167,12 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           setMoveTimeRemaining(message.moveTimeRemaining);
         }
         // Only clear selection if not continuing a jump
+        // Keep legal moves visible until user clicks another piece
         if (!message.canContinueJump) {
+          // Clear selected square since piece moved, but keep legal moves visible
+          // They'll be cleared/updated when user selects another piece
           setSelectedSquare(null);
-          setLegalMoves([]);
+          // Don't clear legalMoves - they'll stay visible until user selects another piece
         }
         setMandatoryCaptures([]);
         setError(null);
@@ -696,6 +699,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   // Handle drag move
   const handleDragMove = useCallback((clientX: number, clientY: number) => {
     if (!draggingPiece) return;
+    setHasDragged(true); // Mark that we've moved
     const pos = getBoardRelativePosition(clientX, clientY);
     if (pos) {
       setDragPosition(pos);
@@ -711,25 +715,24 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       return;
     }
 
-    const wasDragging = hasDragged;
     const currentDraggingPiece = draggingPiece;
     
     setDraggingPiece(null);
     setDragPosition(null);
     setHasDragged(false);
 
-    // Only process drop if we actually dragged (moved the piece)
-    if (!wasDragging) {
-      return;
-    }
-
     const pos = getBoardRelativePosition(clientX, clientY);
     if (!pos) {
+      // If we can't get position, keep the piece selected with legal moves visible
+      setSelectedSquare(currentDraggingPiece.boardIndex);
+      const moves = calculateLegalMoves(currentDraggingPiece.boardIndex);
+      setLegalMoves(moves);
       return;
     }
 
     const dropIndex = getSquareFromPosition(pos.x, pos.y);
     
+    // If dropped on a different square, try to make the move
     if (dropIndex !== null && dropIndex !== currentDraggingPiece.boardIndex) {
       // Check if it's a valid move
       const moves = calculateLegalMoves(currentDraggingPiece.boardIndex);
@@ -738,6 +741,9 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         checkersWebSocketService.makeMove(matchId, currentDraggingPiece.boardIndex, dropIndex);
         setError(null);
         setMandatoryCaptures([]);
+        // Keep piece selected and legal moves visible - they'll be cleared when move is accepted or user clicks another piece
+        setSelectedSquare(currentDraggingPiece.boardIndex);
+        setLegalMoves(moves);
         
         // Clear any existing timeout
         if (moveTimeoutRef.current) {
@@ -755,7 +761,9 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           moveTimeoutRef.current = null;
         }, 3000);
       } else {
-        // Invalid move
+        // Invalid move - keep piece selected and show error
+        setSelectedSquare(currentDraggingPiece.boardIndex);
+        setLegalMoves(moves);
         const allMandatoryCaptures = calculateAllMandatoryCaptures();
         if (allMandatoryCaptures.length > 0) {
           setError('Capture is mandatory! Select a piece that can capture (blue squares).');
@@ -767,8 +775,13 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           playSound('error');
         }
       }
+    } else {
+      // Dropped on same square or invalid position - keep piece selected with legal moves
+      setSelectedSquare(currentDraggingPiece.boardIndex);
+      const moves = calculateLegalMoves(currentDraggingPiece.boardIndex);
+      setLegalMoves(moves);
     }
-  }, [draggingPiece, hasDragged, getBoardRelativePosition, getSquareFromPosition, calculateLegalMoves, matchId, calculateAllMandatoryCaptures]);
+  }, [draggingPiece, getBoardRelativePosition, getSquareFromPosition, calculateLegalMoves, matchId, calculateAllMandatoryCaptures]);
 
   // Mouse event handlers
   useEffect(() => {
