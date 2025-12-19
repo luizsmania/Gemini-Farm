@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { checkersWebSocketService } from '../services/checkersWebSocketService';
 import { ServerMessage, LobbyInfo } from '../types/checkers';
 import { Button } from './Button';
-import { Loader2 } from 'lucide-react';
+import { Loader2, X } from 'lucide-react';
 
 interface CheckersHubProps {
   onNicknameSet: (nickname: string, playerId: string) => void;
@@ -14,7 +14,7 @@ interface CheckersHubProps {
 }
 
 export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameStart, playerId, nickname: propNickname, onShowHistory, onLogout }) => {
-  const [nickname, setNickname] = useState(propNickname || '');
+  const [nickname, setNickname] = useState('');
   // Don't set nicknameSet to true initially - let the server confirm it
   const [nicknameSet, setNicknameSet] = useState(false);
   const [lobbies, setLobbies] = useState<LobbyInfo[]>([]);
@@ -23,13 +23,33 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const autoSetRef = useRef(false);
   const ignoreGameStartRef = useRef(false); // Flag to ignore GAME_START after leaving
-
-  // Sync local nickname state with prop changes (e.g., on page refresh)
+  
+  // Get last used nickname from localStorage (for display purposes only)
+  // Use a state to force re-render when it changes
+  const [lastUsedNickname, setLastUsedNickname] = useState<string | null>(
+    typeof window !== 'undefined' ? localStorage.getItem('checkers_nickname') : null
+  );
+  
+  // Update lastUsedNickname when localStorage changes
   useEffect(() => {
-    if (propNickname && propNickname !== nickname) {
-      setNickname(propNickname);
+    const checkLastNickname = () => {
+      const saved = typeof window !== 'undefined' ? localStorage.getItem('checkers_nickname') : null;
+      setLastUsedNickname(saved);
+    };
+    checkLastNickname();
+    // Also check periodically in case it changes
+    const interval = setInterval(checkLastNickname, 100);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Reset nicknameSet when propNickname becomes empty (logout was called)
+  useEffect(() => {
+    if (!propNickname || propNickname.trim() === '') {
+      setNicknameSet(false);
+      setNickname('');
+      autoSetRef.current = false;
     }
-  }, [propNickname, nickname]);
+  }, [propNickname]);
 
   const handleSetNicknameAuto = async (nick: string) => {
     // Clear any existing timeout
@@ -67,25 +87,15 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
     }
   };
 
-  // Auto-set nickname if it exists from props (loaded from localStorage)
-  // Also handle case where nickname is missing - automatically logout
+  // Auto-set nickname if it exists from props (loaded from localStorage) - but only if not already set
   useEffect(() => {
-    // If no nickname prop and not set, trigger logout to avoid issues
-    if (!propNickname || propNickname.trim() === '') {
-      if (onLogout && nicknameSet) {
-        // Only logout if we were previously set (to avoid infinite loops)
-        onLogout();
-      }
-      return;
-    }
-    
-    if (propNickname && !autoSetRef.current && !nicknameSet) {
+    if (propNickname && propNickname.trim() !== '' && !autoSetRef.current && !nicknameSet) {
       autoSetRef.current = true;
       // Automatically set the nickname on the server
       handleSetNicknameAuto(propNickname);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [propNickname, nicknameSet, onLogout]);
+  }, [propNickname, nicknameSet]);
 
   // Request lobby list when component mounts and nickname is set
   useEffect(() => {
@@ -160,7 +170,18 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
       return;
     }
 
-    await handleSetNicknameAuto(nickname);
+    await handleSetNicknameAuto(nickname.trim());
+  };
+  
+  const handleClearSavedNickname = () => {
+    localStorage.removeItem('checkers_nickname');
+    localStorage.removeItem('checkers_player_id');
+    setLastUsedNickname(null);
+    setNickname('');
+    // Force component to show nickname entry again by calling logout
+    if (onLogout) {
+      onLogout();
+    }
   };
 
   const handleCreateLobby = () => {
@@ -204,7 +225,7 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleSetNickname()}
-              placeholder={propNickname ? `Last used: ${propNickname}` : "Enter your nickname"}
+              placeholder="Enter your nickname"
               className="w-full px-4 py-3 text-base sm:text-lg bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
               maxLength={20}
             />
@@ -227,6 +248,27 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
                 'Start Playing'
               )}
             </Button>
+            
+            {lastUsedNickname && lastUsedNickname.trim() !== '' && (
+              <div className="flex items-center justify-between px-3 py-2 bg-slate-700/50 rounded-lg border border-slate-600">
+                <button
+                  onClick={() => {
+                    setNickname(lastUsedNickname);
+                    handleSetNicknameAuto(lastUsedNickname);
+                  }}
+                  className="flex-1 text-left text-sm sm:text-base text-slate-300 hover:text-white transition-colors"
+                >
+                  Use same nick as before: <span className="text-purple-400 font-semibold">{lastUsedNickname}</span>
+                </button>
+                <button
+                  onClick={handleClearSavedNickname}
+                  className="ml-2 p-1 hover:bg-slate-600 rounded transition-colors flex-shrink-0"
+                  aria-label="Clear saved nickname"
+                >
+                  <X size={18} className="text-slate-400 hover:text-white" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
