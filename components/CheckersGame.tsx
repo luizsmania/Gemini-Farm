@@ -74,6 +74,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   const [draggingPiece, setDraggingPiece] = useState<{ boardIndex: number; piece: Piece } | null>(null);
   const [dragPosition, setDragPosition] = useState<{ x: number; y: number } | null>(null);
   const [hasDragged, setHasDragged] = useState(false);
+  const [pendingMove, setPendingMove] = useState<{ from: number; to: number; board: Board } | null>(null);
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
   const boardContainerRef = useRef<HTMLDivElement>(null);
   const moveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -87,14 +88,25 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       if (message.type === 'MOVE_ACCEPTED' && message.board) {
         console.log('Updating board with new state:', message.board);
         
-        // Set animation if we have from and to
-        if (message.from !== undefined && message.to !== undefined) {
+        // Check if this was our move (optimistic update) before processing
+        const wasOurMove = pendingMove !== null && 
+          message.from !== undefined && 
+          message.to !== undefined &&
+          pendingMove.from === message.from && 
+          pendingMove.to === message.to;
+        
+        // Set animation if we have from and to (only for opponent moves, not user's own moves)
+        // User's own moves are already shown instantly via optimistic update
+        if (message.from !== undefined && message.to !== undefined && !wasOurMove) {
           setAnimatingPiece({ from: message.from, to: message.to });
           setLastMove({ from: message.from, to: message.to });
-          // Clear animation after it completes
+          // Clear animation after it completes - chess.com uses ~200ms for smooth feel
           setTimeout(() => {
             setAnimatingPiece(null);
-          }, 360); // Match animation duration (40% faster: 0.6s * 0.6 = 0.36s)
+          }, 200);
+        } else if (message.from !== undefined && message.to !== undefined) {
+          // Our move - just update last move, no animation needed
+          setLastMove({ from: message.from, to: message.to });
         }
         
         // Check for promotion before updating board
@@ -110,17 +122,22 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           }
         }
         
+        // Clear pending move since server confirmed it
+        if (wasOurMove) {
+          setPendingMove(null);
+        }
+        
         setBoard(message.board);
         if (message.nextTurn) {
           const wasMyTurn = currentTurn === yourColor;
           const hadCaptures = (message.capturesRed !== undefined && message.capturesRed > capturesRed) || 
                              (message.capturesBlack !== undefined && message.capturesBlack > capturesBlack);
           
-          // Determine if this was our move or opponent's move
-          const wasOurMove = wasMyTurn;
+          // Determine if this was our move or opponent's move (for sound)
+          const wasOurMoveForSound = wasMyTurn;
           
           // Play move sound (self or opponent)
-          if (wasOurMove) {
+          if (wasOurMoveForSound) {
             playSound('move-self');
           } else {
             playSound('move-opponent');
@@ -185,6 +202,13 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       console.log('handleMoveRejected called with:', message);
       if (message.type === 'MOVE_REJECTED' && message.reason) {
         console.error('Move rejected:', message.reason);
+        
+        // Revert optimistic update
+        if (pendingMove) {
+          setBoard(pendingMove.board);
+          setPendingMove(null);
+        }
+        
         setError(message.reason);
         setSelectedSquare(null);
         setLegalMoves([]);
@@ -958,7 +982,27 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           console.log('Socket connected?', checkersWebSocketService.isConnected());
           const fromSquare = selectedSquare; // Capture value for timeout check
           
-          // Sound will play when move is accepted
+          // Optimistically update board instantly (chess.com style)
+          const newBoard = [...board];
+          const piece = newBoard[selectedSquare];
+          newBoard[selectedSquare] = null;
+          newBoard[index] = piece;
+          
+          // Check for king promotion
+          const { row } = indexToPos(index);
+          if (piece === 'r' && row === 0) {
+            newBoard[index] = 'R'; // Promote to king
+          } else if (piece === 'b' && row === BOARD_SIZE - 1) {
+            newBoard[index] = 'B'; // Promote to king
+          }
+          
+          // Save original board for potential revert
+          setPendingMove({ from: selectedSquare, to: index, board: [...board] });
+          
+          // Update board instantly (no animation for user's own moves)
+          setBoard(newBoard);
+          
+          // Send move to server
           checkersWebSocketService.makeMove(matchId, selectedSquare, index);
           setError(null);
           setMandatoryCaptures([]);
@@ -1297,7 +1341,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
                         zIndex: 10000,
                         width: `${squareSizePercent}%`,
                         height: `${squareSizePercent}%`,
-                        animation: 'pieceMoveOverlay 0.36s ease-in-out',
+                        animation: 'pieceMoveOverlay 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
                         animationFillMode: 'forwards',
                         '--move-x': `${moveXPercent}%`,
                         '--move-y': `${moveYPercent}%`,
