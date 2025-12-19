@@ -243,10 +243,13 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     };
   };
 
-  // Calculate relative position for animation
-  const getRelativePosition = (fromIndex: number, toIndex: number): { x: number; y: number } => {
-    const fromPos = indexToPos(fromIndex);
-    const toPos = indexToPos(toIndex);
+  // Calculate relative position for animation (using display indices to respect board flip)
+  const getRelativePosition = (fromBoardIndex: number, toBoardIndex: number): { x: number; y: number } => {
+    // Convert board indices to display indices to respect board flip
+    const fromDisplayIndex = boardIndexToDisplayIndex(fromBoardIndex);
+    const toDisplayIndex = boardIndexToDisplayIndex(toBoardIndex);
+    const fromPos = indexToPos(fromDisplayIndex);
+    const toPos = indexToPos(toDisplayIndex);
     // Calculate difference in rows and columns
     // Since each square is 1/8 of the board, the difference in percentage is:
     const rowDiff = fromPos.row - toPos.row; // Negative means moving down
@@ -680,27 +683,18 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           isLastMoveSquare ? 'border-purple-400' : 
           'border-transparent'
         }`}
-        style={{ position: 'relative', zIndex: 1 }}
+        style={{ position: 'relative', zIndex: isAnimatingTo ? 9998 : 1 }}
       >
         {piece && (() => {
           const display = getPieceDisplay(piece);
-          // If this is the source square of animation, hide the piece (it's moving)
-          if (isAnimatingFrom) {
+          // If this is animating (from or to), hide the piece (it's rendered as overlay)
+          if (isAnimatingFrom || isAnimatingTo) {
             return null;
           }
-          // If this is the destination square, animate the piece coming in
-          const shouldAnimate = isAnimatingTo && animatingPiece !== null;
-          const relativePos = shouldAnimate ? getRelativePosition(animatingPiece.from, animatingPiece.to) : { x: 0, y: 0 };
           
           return (
             <div 
               className="relative flex items-center justify-center pointer-events-none select-none w-full h-full"
-              style={shouldAnimate ? {
-                animation: 'pieceMove 0.6s ease-in-out',
-                animationFillMode: 'forwards',
-                '--move-x': `${relativePos.x}%`,
-                '--move-y': `${relativePos.y}%`,
-              } as React.CSSProperties & { '--move-x': string; '--move-y': string } : {}}
             >
               <span className="text-lg sm:text-xl md:text-2xl lg:text-3xl filter drop-shadow-lg relative z-10">{display.emoji}</span>
               {display.isKing && (
@@ -775,7 +769,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
               </div>
 
               {/* Board - Takes remaining space */}
-              <div className="flex-1 min-h-0 flex items-center justify-center">
+              <div className="flex-1 min-h-0 flex items-center justify-center" style={{ position: 'relative' }}>
                 <div 
                   className="grid grid-cols-8 gap-0 bg-amber-800 p-0.5 sm:p-1 rounded-lg w-full max-w-full" 
                   style={{ 
@@ -792,6 +786,53 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
                 >
                   {Array.from({ length: BOARD_SIZE * BOARD_SIZE }, (_, i) => renderSquare(i))}
                 </div>
+                {/* Animated piece overlay - renders above everything when moving */}
+                {animatingPiece && (() => {
+                  const fromDisplayIndex = boardIndexToDisplayIndex(animatingPiece.from);
+                  const toDisplayIndex = boardIndexToDisplayIndex(animatingPiece.to);
+                  const fromPos = indexToPos(fromDisplayIndex);
+                  const toPos = indexToPos(toDisplayIndex);
+                  const piece = board[animatingPiece.to] || board[animatingPiece.from];
+                  if (!piece) return null;
+                  const display = getPieceDisplay(piece);
+                  
+                  // Calculate position as percentage of board size
+                  const squareSizePercent = 100 / BOARD_SIZE;
+                  const startX = (fromPos.col * squareSizePercent) + (squareSizePercent / 2);
+                  const startY = (fromPos.row * squareSizePercent) + (squareSizePercent / 2);
+                  
+                  // Calculate movement distance in squares (positive means moving right/down)
+                  const rowDiff = toPos.row - fromPos.row;
+                  const colDiff = toPos.col - fromPos.col;
+                  
+                  // Convert to percentage of square size (each square is 100% of square size)
+                  // Multiply by 100 to get percentage of the element's own width/height
+                  const moveXPercent = colDiff * 100;
+                  const moveYPercent = rowDiff * 100;
+                  
+                  return (
+                    <div
+                      className="absolute pointer-events-none select-none flex items-center justify-center"
+                      style={{
+                        left: `${startX}%`,
+                        top: `${startY}%`,
+                        transform: 'translate(-50%, -50%)',
+                        zIndex: 10000,
+                        width: `${squareSizePercent}%`,
+                        height: `${squareSizePercent}%`,
+                        animation: 'pieceMoveOverlay 0.6s ease-in-out',
+                        animationFillMode: 'forwards',
+                        '--move-x': `${moveXPercent}%`,
+                        '--move-y': `${moveYPercent}%`,
+                      } as React.CSSProperties & { '--move-x': string; '--move-y': string }}
+                    >
+                      <span className="text-lg sm:text-xl md:text-2xl lg:text-3xl filter drop-shadow-lg relative z-10">{display.emoji}</span>
+                      {display.isKing && (
+                        <span className="text-sm sm:text-base md:text-lg lg:text-xl absolute -top-0.5 sm:-top-1 left-1/2 transform -translate-x-1/2 filter drop-shadow-lg z-20">👑</span>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Current Player Info (Bottom) */}

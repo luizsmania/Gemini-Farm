@@ -266,3 +266,19 @@
   }
 }
 
+/* Piece movement animation for overlay (absolute positioned) */
+@keyframes pieceMoveOverlay {
+  0% {
+    transform: translate(-50%, -50%) translate(0, 0) scale(0.8);
+    opacity: 0.7;
+  }
+  50% {
+    transform: translate(-50%, -50%) translate(calc(var(--move-x, 0) * 0.5), calc(var(--move-y, 0) * 0.5)) scale(1.05);
+    opacity: 0.95;
+  }
+  100% {
+    transform: translate(-50%, -50%) translate(var(--move-x, 0), var(--move-y, 0)) scale(1);
+    opacity: 1;
+  }
+}
+
