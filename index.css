@@ -266,7 +266,7 @@
   }
 }
 
-/* Piece movement animation for overlay (absolute positioned) */
+/* Piece movement animation for overlay (absolute positioned) - 40% faster */
 @keyframes pieceMoveOverlay {
   0% {
     transform: translate(-50%, -50%) translate(0, 0) scale(0.8);

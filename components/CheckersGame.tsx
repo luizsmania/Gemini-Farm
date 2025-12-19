@@ -60,7 +60,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           // Clear animation after it completes
           setTimeout(() => {
             setAnimatingPiece(null);
-          }, 600); // Match animation duration
+          }, 360); // Match animation duration (40% faster: 0.6s * 0.6 = 0.36s)
         }
         
         setBoard(message.board);
@@ -502,14 +502,46 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     }
 
     if (canContinueJump && continueJumpFrom !== null) {
-      // Must continue jump from the same piece
-      if (index !== continueJumpFrom && selectedSquare !== continueJumpFrom) {
-        setError('You must continue your jump');
+      // If we have the piece selected and click on a legal move, make the move
+      if (selectedSquare === continueJumpFrom) {
+        const moves = calculateLegalMoves(continueJumpFrom);
+        if (moves.includes(index)) {
+          // This is a legal move, proceed to make it
+          console.log('Making continued jump from', selectedSquare, 'to', index);
+          checkersWebSocketService.makeMove(matchId, selectedSquare, index);
+          setError(null);
+          setMandatoryCaptures([]);
+          // Clear any existing timeout
+          if (moveTimeoutRef.current) {
+            clearTimeout(moveTimeoutRef.current);
+          }
+          // Set a timeout to show error if no response
+          moveTimeoutRef.current = setTimeout(() => {
+            setSelectedSquare(current => {
+              if (current === selectedSquare) {
+                console.warn('No response from server after 3 seconds');
+                setError('No response from server. Check connection.');
+              }
+              return current;
+            });
+            moveTimeoutRef.current = null;
+          }, 3000);
+          return;
+        }
+      }
+      // If clicking on continueJumpFrom, select it
+      if (index === continueJumpFrom) {
+        setSelectedSquare(continueJumpFrom);
+        const moves = calculateLegalMoves(continueJumpFrom);
+        setLegalMoves(moves);
+        console.log('Selected piece for continuing jump at', continueJumpFrom, 'with moves:', moves);
         return;
       }
-      if (selectedSquare === continueJumpFrom || index === continueJumpFrom) {
+      // If we don't have the piece selected and click elsewhere, show error
+      if (selectedSquare !== continueJumpFrom) {
+        setError('You must continue your jump from the highlighted piece');
+        // Auto-select the piece that must continue jumping
         setSelectedSquare(continueJumpFrom);
-        // Calculate legal moves for continuing jump
         const moves = calculateLegalMoves(continueJumpFrom);
         setLegalMoves(moves);
         return;
@@ -820,7 +852,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
                         zIndex: 10000,
                         width: `${squareSizePercent}%`,
                         height: `${squareSizePercent}%`,
-                        animation: 'pieceMoveOverlay 0.6s ease-in-out',
+                        animation: 'pieceMoveOverlay 0.36s ease-in-out',
                         animationFillMode: 'forwards',
                         '--move-x': `${moveXPercent}%`,
                         '--move-y': `${moveYPercent}%`,
