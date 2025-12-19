@@ -441,6 +441,16 @@ io.on('connection', (socket) => {
     
     console.log(`Lobby ${lobbyId} created by ${currentNickname}`);
   });
+
+  socket.on('REQUEST_LOBBY_LIST', () => {
+    if (!currentPlayerId) {
+      socket.emit('ERROR', { type: 'ERROR', message: 'Please set your nickname first' } as ServerMessage);
+      return;
+    }
+    
+    // Send lobby list to the requesting player
+    broadcastLobbyList(currentPlayerId);
+  });
   
   // Join lobby (or rejoin match)
   socket.on('JOIN_LOBBY', (message: ClientMessage) => {

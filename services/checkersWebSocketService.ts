@@ -192,6 +192,10 @@ class CheckersWebSocketService {
     this.send({ type: 'FORFEIT_MATCH', matchId });
   }
 
+  requestLobbyList(): void {
+    this.send({ type: 'REQUEST_LOBBY_LIST' });
+  }
+
   isConnected(): boolean {
     return this.socket?.connected || false;
   }

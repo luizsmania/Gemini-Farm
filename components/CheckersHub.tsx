@@ -87,6 +87,13 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [propNickname, nicknameSet, onLogout]);
 
+  // Request lobby list when component mounts and nickname is set
+  useEffect(() => {
+    if (nicknameSet && checkersWebSocketService.isConnected()) {
+      checkersWebSocketService.requestLobbyList();
+    }
+  }, [nicknameSet]);
+
   useEffect(() => {
     const handleLobbyList = (message: ServerMessage) => {
       if (message.type === 'LOBBY_LIST' && message.lobbies) {
