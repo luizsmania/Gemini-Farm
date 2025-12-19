@@ -15,91 +15,18 @@ interface CheckersGameProps {
 
 const BOARD_SIZE = 8;
 
-// Natural sound effects using Web Audio API with smooth envelopes
-const playSound = (type: 'move' | 'capture' | 'error' | 'turn') => {
+// Play audio files from the audio folder
+const playSound = (type: 'move-self' | 'move-opponent' | 'capture' | 'error' | 'game-start' | 'game-end' | 'promote' | 'tenseconds') => {
   try {
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const now = audioContext.currentTime;
-    const gainNode = audioContext.createGain();
-    
-    gainNode.connect(audioContext.destination);
-    
-    switch (type) {
-      case 'move': {
-        // Soft click sound - like a chess piece being placed
-        const oscillator = audioContext.createOscillator();
-        oscillator.type = 'sine';
-        oscillator.frequency.value = 800;
-        oscillator.connect(gainNode);
-        
-        // Smooth envelope - quick attack, gentle release
-        gainNode.gain.setValueAtTime(0, now);
-        gainNode.gain.linearRampToValueAtTime(0.08, now + 0.01);
-        gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
-        
-        oscillator.start(now);
-        oscillator.stop(now + 0.08);
-        break;
-      }
-      case 'capture': {
-        // Satisfying capture sound - two-tone chime
-        const osc1 = audioContext.createOscillator();
-        const osc2 = audioContext.createOscillator();
-        osc1.type = 'sine';
-        osc2.type = 'sine';
-        osc1.frequency.value = 600;
-        osc2.frequency.value = 800;
-        
-        osc1.connect(gainNode);
-        osc2.connect(gainNode);
-        
-        // Quick attack, medium release
-        gainNode.gain.setValueAtTime(0, now);
-        gainNode.gain.linearRampToValueAtTime(0.12, now + 0.02);
-        gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
-        
-        osc1.start(now);
-        osc2.start(now);
-        osc1.stop(now + 0.15);
-        osc2.stop(now + 0.15);
-        break;
-      }
-      case 'error': {
-        // Gentle error sound - low buzz
-        const oscillator = audioContext.createOscillator();
-        oscillator.type = 'triangle';
-        oscillator.frequency.value = 150;
-        oscillator.connect(gainNode);
-        
-        // Soft envelope
-        gainNode.gain.setValueAtTime(0, now);
-        gainNode.gain.linearRampToValueAtTime(0.06, now + 0.05);
-        gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
-        
-        oscillator.start(now);
-        oscillator.stop(now + 0.2);
-        break;
-      }
-      case 'turn': {
-        // Pleasant notification - bell-like chime
-        const oscillator = audioContext.createOscillator();
-        oscillator.type = 'sine';
-        oscillator.frequency.setValueAtTime(523, now);
-        oscillator.frequency.exponentialRampToValueAtTime(659, now + 0.1);
-        oscillator.connect(gainNode);
-        
-        // Gentle bell envelope
-        gainNode.gain.setValueAtTime(0, now);
-        gainNode.gain.linearRampToValueAtTime(0.1, now + 0.05);
-        gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
-        
-        oscillator.start(now);
-        oscillator.stop(now + 0.3);
-        break;
-      }
-    }
+    const audio = new Audio(`/audio/${type}.mp3`);
+    audio.volume = 0.7; // Set volume to 70%
+    audio.play().catch((e) => {
+      // Ignore audio errors (e.g., user interaction required, autoplay restrictions)
+      console.debug('Audio play failed:', e);
+    });
   } catch (e) {
-    // Ignore audio errors (e.g., user interaction required)
+    // Ignore audio errors
+    console.debug('Audio creation failed:', e);
   }
 };
 
@@ -170,24 +97,54 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           }, 360); // Match animation duration (40% faster: 0.6s * 0.6 = 0.36s)
         }
         
+        // Check for promotion before updating board
+        let wasPromotion = false;
+        if (message.from !== undefined && message.to !== undefined) {
+          const fromPiece = board[message.from];
+          const toPiece = message.board[message.to];
+          // Check if piece became a king (promotion)
+          if (fromPiece && toPiece) {
+            const wasKing = fromPiece === 'R' || fromPiece === 'B';
+            const isNowKing = toPiece === 'R' || toPiece === 'B';
+            wasPromotion = !wasKing && isNowKing;
+          }
+        }
+        
         setBoard(message.board);
         if (message.nextTurn) {
           const wasMyTurn = currentTurn === yourColor;
           const hadCaptures = (message.capturesRed !== undefined && message.capturesRed > capturesRed) || 
                              (message.capturesBlack !== undefined && message.capturesBlack > capturesBlack);
-          setCurrentTurn(message.nextTurn);
-          // Play sound if it's now my turn
-          if (message.nextTurn === yourColor && !wasMyTurn) {
-            playSound('turn');
-            if ('vibrate' in navigator) {
-              navigator.vibrate([50, 30, 50]);
-            }
+          
+          // Determine if this was our move or opponent's move
+          const wasOurMove = wasMyTurn;
+          
+          // Play move sound (self or opponent)
+          if (wasOurMove) {
+            playSound('move-self');
+          } else {
+            playSound('move-opponent');
           }
-          // Check if this was a capture
+          
+          // Play capture sound if there was a capture
           if (hadCaptures) {
             playSound('capture');
             if ('vibrate' in navigator) {
               navigator.vibrate(30);
+            }
+          }
+          
+          // Play promotion sound if piece was promoted
+          if (wasPromotion) {
+            playSound('promote');
+          }
+          
+          setCurrentTurn(message.nextTurn);
+          
+          // Play sound if it's now my turn (opponent just moved)
+          if (message.nextTurn === yourColor && !wasMyTurn) {
+            if ('vibrate' in navigator) {
+              navigator.vibrate([50, 30, 50]);
             }
           }
         }
@@ -244,6 +201,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       if (message.type === 'GAME_OVER' && message.winner) {
         setWinner(message.winner);
         setShowRematch(true);
+        playSound('game-end');
       }
     };
 
@@ -277,6 +235,8 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         setAnimatingPiece(null);
         setIsLeaving(false); // Cancel leave state if rejoining
         setLeaveTimeRemaining(0);
+        // Play game start sound
+        playSound('game-start');
         if (message.capturesRed !== undefined) {
           setCapturesRed(message.capturesRed);
         }
@@ -409,6 +369,13 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       }
     };
   }, [currentTurn, yourColor, winner, moveTimeRemaining]);
+
+  // Play 10 seconds warning sound
+  useEffect(() => {
+    if (currentTurn === yourColor && !winner && moveTimeRemaining === 10) {
+      playSound('tenseconds');
+    }
+  }, [moveTimeRemaining, currentTurn, yourColor, winner]);
 
   const getPieceDisplay = (piece: Piece): { emoji: string; isKing: boolean } => {
     switch (piece) {
@@ -767,8 +734,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       // Check if it's a valid move
       const moves = calculateLegalMoves(currentDraggingPiece.boardIndex);
       if (moves.includes(dropIndex)) {
-        // Valid move - execute it
-        playSound('move');
+        // Valid move - execute it (sound will play when move is accepted)
         checkersWebSocketService.makeMove(matchId, currentDraggingPiece.boardIndex, dropIndex);
         setError(null);
         setMandatoryCaptures([]);
@@ -979,9 +945,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           console.log('Socket connected?', checkersWebSocketService.isConnected());
           const fromSquare = selectedSquare; // Capture value for timeout check
           
-          // Play move sound
-          playSound('move');
-          
+          // Sound will play when move is accepted
           checkersWebSocketService.makeMove(matchId, selectedSquare, index);
           setError(null);
           setMandatoryCaptures([]);
