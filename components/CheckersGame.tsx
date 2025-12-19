@@ -788,9 +788,9 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         
         setError(null);
         setMandatoryCaptures([]);
-        // Keep piece selected and legal moves visible - they'll be cleared when move is accepted or user clicks another piece
-        setSelectedSquare(currentDraggingPiece.boardIndex);
-        setLegalMoves(moves);
+        // Clear legal moves immediately after making a move
+        setLegalMoves([]);
+        setSelectedSquare(null);
         
         // Clear any existing timeout
         if (moveTimeoutRef.current) {
@@ -1026,6 +1026,9 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           checkersWebSocketService.makeMove(matchId, selectedSquare, index);
           setError(null);
           setMandatoryCaptures([]);
+          // Clear legal moves immediately after making a move
+          setLegalMoves([]);
+          setSelectedSquare(null);
           // Clear any existing timeout
           if (moveTimeoutRef.current) {
             clearTimeout(moveTimeoutRef.current);
