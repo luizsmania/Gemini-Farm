@@ -157,6 +157,7 @@ async function startGame(lobby: Lobby) {
       capturesBlack: 0,
       moveTimerStart: Date.now(),
     };
+    console.log(`[GAME_START] Initialized game ${matchId} with captures: Red=0, Black=0`);
     
     activeGames.set(matchId, gameState);
     playerToGame.set(playerRed, matchId);
@@ -687,14 +688,16 @@ io.on('connection', (socket) => {
       game.board = result.newBoard;
       game.lastMove = { from: moveMessage.from!, to: moveMessage.to! };
       
-      // Track captures
-      if (!game.capturesRed) game.capturesRed = 0;
-      if (!game.capturesBlack) game.capturesBlack = 0;
-      if (result.captures.length > 0) {
+      // Track captures - always update, even during continued jumps
+      if (game.capturesRed === undefined) game.capturesRed = 0;
+      if (game.capturesBlack === undefined) game.capturesBlack = 0;
+      if (result.captures && result.captures.length > 0) {
         if (game.currentTurn === 'red') {
           game.capturesRed += result.captures.length;
+          console.log(`[MOVE] Red captured ${result.captures.length} piece(s). Total: ${game.capturesRed}`);
         } else {
           game.capturesBlack += result.captures.length;
+          console.log(`[MOVE] Black captured ${result.captures.length} piece(s). Total: ${game.capturesBlack}`);
         }
       }
       
@@ -713,6 +716,7 @@ io.on('connection', (socket) => {
       
       if (canJump && result.captures.length > 0) {
         // Continue jump - don't reset timer, same turn
+        // Captures already tracked above
         game.canContinueJump = true;
         game.continueJumpFrom = moveMessage.to!;
         game.currentTurn = playerColor; // Keep same turn
@@ -771,10 +775,11 @@ io.on('connection', (socket) => {
           to: moveMessage.to,
           canContinueJump: game.canContinueJump,
           continueJumpFrom: game.continueJumpFrom,
-          capturesRed: game.capturesRed,
-          capturesBlack: game.capturesBlack,
+          capturesRed: game.capturesRed ?? 0,
+          capturesBlack: game.capturesBlack ?? 0,
           moveTimeRemaining: game.moveTimerStart ? Math.max(0, 45 - Math.floor((Date.now() - game.moveTimerStart) / 1000)) : 45,
         } as ServerMessage;
+        console.log(`[MOVE] Captures - Red: ${moveAcceptedMessage.capturesRed}, Black: ${moveAcceptedMessage.capturesBlack}`);
         console.log(`[MOVE] Broadcasting MOVE_ACCEPTED to match:${moveMessage.matchId}`);
         console.log(`[MOVE] Board length: ${moveAcceptedMessage.board?.length}, Next turn: ${moveAcceptedMessage.nextTurn}`);
         console.log(`[MOVE] Full message:`, JSON.stringify(moveAcceptedMessage));

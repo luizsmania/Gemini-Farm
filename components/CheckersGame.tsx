@@ -15,41 +15,89 @@ interface CheckersGameProps {
 
 const BOARD_SIZE = 8;
 
-// Simple sound effects using Web Audio API
+// Natural sound effects using Web Audio API with smooth envelopes
 const playSound = (type: 'move' | 'capture' | 'error' | 'turn') => {
   try {
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const oscillator = audioContext.createOscillator();
+    const now = audioContext.currentTime;
     const gainNode = audioContext.createGain();
     
-    oscillator.connect(gainNode);
     gainNode.connect(audioContext.destination);
     
     switch (type) {
-      case 'move':
-        oscillator.frequency.value = 440;
-        gainNode.gain.value = 0.1;
+      case 'move': {
+        // Soft click sound - like a chess piece being placed
+        const oscillator = audioContext.createOscillator();
         oscillator.type = 'sine';
+        oscillator.frequency.value = 800;
+        oscillator.connect(gainNode);
+        
+        // Smooth envelope - quick attack, gentle release
+        gainNode.gain.setValueAtTime(0, now);
+        gainNode.gain.linearRampToValueAtTime(0.08, now + 0.01);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+        
+        oscillator.start(now);
+        oscillator.stop(now + 0.08);
         break;
-      case 'capture':
-        oscillator.frequency.value = 600;
-        gainNode.gain.value = 0.15;
-        oscillator.type = 'square';
+      }
+      case 'capture': {
+        // Satisfying capture sound - two-tone chime
+        const osc1 = audioContext.createOscillator();
+        const osc2 = audioContext.createOscillator();
+        osc1.type = 'sine';
+        osc2.type = 'sine';
+        osc1.frequency.value = 600;
+        osc2.frequency.value = 800;
+        
+        osc1.connect(gainNode);
+        osc2.connect(gainNode);
+        
+        // Quick attack, medium release
+        gainNode.gain.setValueAtTime(0, now);
+        gainNode.gain.linearRampToValueAtTime(0.12, now + 0.02);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+        
+        osc1.start(now);
+        osc2.start(now);
+        osc1.stop(now + 0.15);
+        osc2.stop(now + 0.15);
         break;
-      case 'error':
-        oscillator.frequency.value = 200;
-        gainNode.gain.value = 0.1;
-        oscillator.type = 'sawtooth';
+      }
+      case 'error': {
+        // Gentle error sound - low buzz
+        const oscillator = audioContext.createOscillator();
+        oscillator.type = 'triangle';
+        oscillator.frequency.value = 150;
+        oscillator.connect(gainNode);
+        
+        // Soft envelope
+        gainNode.gain.setValueAtTime(0, now);
+        gainNode.gain.linearRampToValueAtTime(0.06, now + 0.05);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+        
+        oscillator.start(now);
+        oscillator.stop(now + 0.2);
         break;
-      case 'turn':
-        oscillator.frequency.value = 523;
-        gainNode.gain.value = 0.1;
+      }
+      case 'turn': {
+        // Pleasant notification - bell-like chime
+        const oscillator = audioContext.createOscillator();
         oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(523, now);
+        oscillator.frequency.exponentialRampToValueAtTime(659, now + 0.1);
+        oscillator.connect(gainNode);
+        
+        // Gentle bell envelope
+        gainNode.gain.setValueAtTime(0, now);
+        gainNode.gain.linearRampToValueAtTime(0.1, now + 0.05);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+        
+        oscillator.start(now);
+        oscillator.stop(now + 0.3);
         break;
+      }
     }
-    
-    oscillator.start();
-    oscillator.stop(audioContext.currentTime + 0.1);
   } catch (e) {
     // Ignore audio errors (e.g., user interaction required)
   }
@@ -145,11 +193,14 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         if (message.continueJumpFrom !== undefined) {
           setContinueJumpFrom(message.continueJumpFrom);
         }
+        // Always update captures, even if 0
         if (message.capturesRed !== undefined) {
           setCapturesRed(message.capturesRed);
+          console.log('MOVE_ACCEPTED: Updated capturesRed to:', message.capturesRed);
         }
         if (message.capturesBlack !== undefined) {
           setCapturesBlack(message.capturesBlack);
+          console.log('MOVE_ACCEPTED: Updated capturesBlack to:', message.capturesBlack);
         }
         if (message.moveTimeRemaining !== undefined) {
           setMoveTimeRemaining(message.moveTimeRemaining);
@@ -227,6 +278,15 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         }
         if (message.capturesBlack !== undefined) {
           setCapturesBlack(message.capturesBlack);
+        }
+        // Always update captures, even if 0
+        if (message.capturesRed !== undefined) {
+          setCapturesRed(message.capturesRed);
+          console.log('GAME_START: Updated capturesRed to:', message.capturesRed);
+        }
+        if (message.capturesBlack !== undefined) {
+          setCapturesBlack(message.capturesBlack);
+          console.log('GAME_START: Updated capturesBlack to:', message.capturesBlack);
         }
         if (message.moveTimeRemaining !== undefined) {
           setMoveTimeRemaining(message.moveTimeRemaining);
@@ -946,7 +1006,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
                       {opponentColor === 'red' ? 'Red' : 'Black'}
                     </span>
                     <span className="text-[10px] sm:text-xs text-slate-400 flex items-center gap-0.5">
-                      {opponentColor === 'red' ? '🔴' : '⚫'} {opponentColor === 'red' ? capturesRed : capturesBlack}
+                      {opponentColor === 'red' ? '🔴' : '⚫'} {(opponentColor === 'red' ? capturesRed : capturesBlack) || 0}
                     </span>
                     {currentTurn === opponentColor && (
                       <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-green-500 rounded-full flex-shrink-0"></span>
@@ -1038,7 +1098,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
                       {yourColor === 'red' ? 'Red' : 'Black'}
                     </span>
                     <span className="text-[10px] sm:text-xs text-slate-400 flex items-center gap-0.5">
-                      {yourColor === 'red' ? '🔴' : '⚫'} {yourColor === 'red' ? capturesRed : capturesBlack}
+                      {yourColor === 'red' ? '🔴' : '⚫'} {(yourColor === 'red' ? capturesRed : capturesBlack) || 0}
                     </span>
                     {currentTurn === yourColor && (
                       <>
