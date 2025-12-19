@@ -144,7 +144,11 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   const [capturesRed, setCapturesRed] = useState<number>(0);
   const [capturesBlack, setCapturesBlack] = useState<number>(0);
   const [moveTimeRemaining, setMoveTimeRemaining] = useState<number>(45);
+  const [draggingPiece, setDraggingPiece] = useState<{ boardIndex: number; piece: Piece } | null>(null);
+  const [dragPosition, setDragPosition] = useState<{ x: number; y: number } | null>(null);
+  const [hasDragged, setHasDragged] = useState(false);
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
+  const boardContainerRef = useRef<HTMLDivElement>(null);
   const moveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const errorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const leaveCountdownRef = useRef<NodeJS.Timeout | null>(null);
@@ -668,6 +672,200 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     }
   }, [canContinueJump, continueJumpFrom, currentTurn, yourColor, calculateLegalMoves]);
 
+  // Get board-relative position from client coordinates
+  const getBoardRelativePosition = useCallback((clientX: number, clientY: number): { x: number; y: number } | null => {
+    if (!boardContainerRef.current) return null;
+    const rect = boardContainerRef.current.getBoundingClientRect();
+    return {
+      x: clientX - rect.left,
+      y: clientY - rect.top,
+    };
+  }, []);
+
+  // Get square index from board-relative position
+  const getSquareFromPosition = useCallback((x: number, y: number): number | null => {
+    if (!boardContainerRef.current) return null;
+    const rect = boardContainerRef.current.getBoundingClientRect();
+    const boardSize = Math.min(rect.width, rect.height);
+    const squareSize = boardSize / BOARD_SIZE;
+    const col = Math.floor(x / squareSize);
+    const row = Math.floor(y / squareSize);
+    
+    if (row < 0 || row >= BOARD_SIZE || col < 0 || col >= BOARD_SIZE) {
+      return null;
+    }
+    
+    const displayIndex = row * BOARD_SIZE + col;
+    return displayIndexToBoardIndex(displayIndex);
+  }, []);
+
+  // Handle drag start
+  const handleDragStart = useCallback((index: number, clientX: number, clientY: number) => {
+    const piece = board[index];
+    if (!piece) return;
+    
+    const pieceColor = (piece === 'r' || piece === 'R') ? 'red' : 'black';
+    if (pieceColor !== currentTurn) return;
+    if (currentTurn !== yourColor) return;
+    if (winner) return;
+
+    // Check if we can continue jump
+    if (canContinueJump && continueJumpFrom !== null && index !== continueJumpFrom) {
+      setError('You must continue your jump from the highlighted piece');
+      return;
+    }
+
+    const pos = getBoardRelativePosition(clientX, clientY);
+    if (!pos) return;
+
+    setDraggingPiece({ boardIndex: index, piece });
+    setDragPosition(pos);
+    setHasDragged(false);
+    setSelectedSquare(index);
+    const moves = calculateLegalMoves(index);
+    setLegalMoves(moves);
+  }, [board, currentTurn, yourColor, winner, canContinueJump, continueJumpFrom, getBoardRelativePosition, calculateLegalMoves]);
+
+  // Handle drag move
+  const handleDragMove = useCallback((clientX: number, clientY: number) => {
+    if (!draggingPiece) return;
+    const pos = getBoardRelativePosition(clientX, clientY);
+    if (pos) {
+      setDragPosition(pos);
+    }
+  }, [draggingPiece, getBoardRelativePosition]);
+
+  // Handle drag end
+  const handleDragEnd = useCallback((clientX: number, clientY: number) => {
+    if (!draggingPiece) {
+      setDraggingPiece(null);
+      setDragPosition(null);
+      setHasDragged(false);
+      return;
+    }
+
+    const wasDragging = hasDragged;
+    const currentDraggingPiece = draggingPiece;
+    
+    setDraggingPiece(null);
+    setDragPosition(null);
+    setHasDragged(false);
+
+    // Only process drop if we actually dragged (moved the piece)
+    if (!wasDragging) {
+      return;
+    }
+
+    const pos = getBoardRelativePosition(clientX, clientY);
+    if (!pos) {
+      return;
+    }
+
+    const dropIndex = getSquareFromPosition(pos.x, pos.y);
+    
+    if (dropIndex !== null && dropIndex !== currentDraggingPiece.boardIndex) {
+      // Check if it's a valid move
+      const moves = calculateLegalMoves(currentDraggingPiece.boardIndex);
+      if (moves.includes(dropIndex)) {
+        // Valid move - execute it
+        playSound('move');
+        checkersWebSocketService.makeMove(matchId, currentDraggingPiece.boardIndex, dropIndex);
+        setError(null);
+        setMandatoryCaptures([]);
+        
+        // Clear any existing timeout
+        if (moveTimeoutRef.current) {
+          clearTimeout(moveTimeoutRef.current);
+        }
+        // Set a timeout to show error if no response
+        moveTimeoutRef.current = setTimeout(() => {
+          setSelectedSquare(current => {
+            if (current === currentDraggingPiece.boardIndex) {
+              console.warn('No response from server after 3 seconds');
+              setError('No response from server. Check connection.');
+            }
+            return current;
+          });
+          moveTimeoutRef.current = null;
+        }, 3000);
+      } else {
+        // Invalid move
+        const allMandatoryCaptures = calculateAllMandatoryCaptures();
+        if (allMandatoryCaptures.length > 0) {
+          setError('Capture is mandatory! Select a piece that can capture (blue squares).');
+          setMandatoryCaptures(allMandatoryCaptures);
+          playSound('error');
+        } else {
+          setError(`Invalid move - select a highlighted square.`);
+          setMandatoryCaptures([]);
+          playSound('error');
+        }
+      }
+    }
+  }, [draggingPiece, hasDragged, getBoardRelativePosition, getSquareFromPosition, calculateLegalMoves, matchId, calculateAllMandatoryCaptures]);
+
+  // Mouse event handlers
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (draggingPiece) {
+        e.preventDefault();
+        handleDragMove(e.clientX, e.clientY);
+      }
+    };
+
+    const handleMouseUp = (e: MouseEvent) => {
+      if (draggingPiece) {
+        e.preventDefault();
+        handleDragEnd(e.clientX, e.clientY);
+      }
+    };
+
+    if (draggingPiece) {
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'grabbing';
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      return () => {
+        document.body.style.userSelect = '';
+        document.body.style.cursor = '';
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [draggingPiece, handleDragMove, handleDragEnd]);
+
+  // Touch event handlers
+  useEffect(() => {
+    const handleTouchMove = (e: TouchEvent) => {
+      if (draggingPiece && e.touches.length > 0) {
+        e.preventDefault(); // Prevent scrolling while dragging
+        const touch = e.touches[0];
+        handleDragMove(touch.clientX, touch.clientY);
+      }
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (draggingPiece) {
+        e.preventDefault();
+        const touch = e.changedTouches[0];
+        if (touch) {
+          handleDragEnd(touch.clientX, touch.clientY);
+        }
+      }
+    };
+
+    if (draggingPiece) {
+      document.body.style.userSelect = 'none';
+      document.addEventListener('touchmove', handleTouchMove, { passive: false });
+      document.addEventListener('touchend', handleTouchEnd, { passive: false });
+      return () => {
+        document.body.style.userSelect = '';
+        document.removeEventListener('touchmove', handleTouchMove);
+        document.removeEventListener('touchend', handleTouchEnd);
+      };
+    }
+  }, [draggingPiece, handleDragMove, handleDragEnd]);
+
   const handleSquareClick = useCallback((index: number) => {
     console.log('handleSquareClick called with index:', index);
     const piece = board[index];
@@ -906,28 +1104,56 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     }
     const colorClass = getSquareColor(boardIndex, isSelected, isLegalMove, isMandatoryCapture, isLastMoveSquare);
 
+    const isDragging = draggingPiece?.boardIndex === boardIndex;
+
     return (
       <div
         key={displayIndex}
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          console.log('Square clicked - displayIndex:', displayIndex, 'boardIndex:', boardIndex, 'Piece:', piece, 'Selected:', selectedSquare, 'Legal moves:', legalMoves);
-          // Convert display index back to board index for handling
-          handleSquareClick(boardIndex);
+        onMouseDown={(e) => {
+          if (piece && !draggingPiece) {
+            e.preventDefault();
+            e.stopPropagation();
+            handleDragStart(boardIndex, e.clientX, e.clientY);
+          }
         }}
-        className={`${colorClass} aspect-square flex items-center justify-center cursor-pointer transition-all active:scale-95 sm:hover:scale-105 border-2 touch-manipulation ${
+        onTouchStart={(e) => {
+          if (piece && !draggingPiece && e.touches.length > 0) {
+            e.preventDefault();
+            e.stopPropagation();
+            const touch = e.touches[0];
+            handleDragStart(boardIndex, touch.clientX, touch.clientY);
+          }
+        }}
+        onClick={(e) => {
+          // Only handle click if not dragging (drag end handles the move)
+          if (!draggingPiece) {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('Square clicked - displayIndex:', displayIndex, 'boardIndex:', boardIndex, 'Piece:', piece, 'Selected:', selectedSquare, 'Legal moves:', legalMoves);
+            // Convert display index back to board index for handling
+            handleSquareClick(boardIndex);
+          }
+        }}
+        className={`${colorClass} aspect-square flex items-center justify-center transition-all active:scale-95 sm:hover:scale-105 border-2 touch-manipulation ${
+          piece && !draggingPiece && currentTurn === yourColor && ((piece === 'r' || piece === 'R') ? 'red' : 'black') === yourColor
+            ? 'cursor-grab active:cursor-grabbing' 
+            : 'cursor-pointer'
+        } ${
           isSelected ? 'border-yellow-400' : 
           isMandatoryCapture ? 'border-blue-400' : 
           isLastMoveSquare ? 'border-purple-400' : 
           'border-transparent'
         }`}
-        style={{ position: 'relative', zIndex: isAnimatingTo ? 9998 : 1 }}
+        style={{ position: 'relative', zIndex: isAnimatingTo ? 9998 : isDragging ? 9999 : 1 }}
       >
         {piece && (() => {
           const display = getPieceDisplay(piece);
           // If this is animating (from or to), hide the piece (it's rendered as overlay)
           if (isAnimatingFrom || isAnimatingTo) {
+            return null;
+          }
+          // If this piece is being dragged, hide it (it's rendered as overlay)
+          if (isDragging) {
             return null;
           }
           
@@ -1018,6 +1244,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
               {/* Board - Takes remaining space */}
               <div className="flex-1 min-h-0 flex items-center justify-center" style={{ position: 'relative' }}>
                 <div 
+                  ref={boardContainerRef}
                   className="grid grid-cols-8 gap-0 bg-amber-800 p-0.5 sm:p-1 rounded-lg w-full max-w-full" 
                   style={{ 
                     position: 'relative', 
@@ -1032,6 +1259,32 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
                   }}
                 >
                   {Array.from({ length: BOARD_SIZE * BOARD_SIZE }, (_, i) => renderSquare(i))}
+                  {/* Dragged piece overlay - follows cursor/touch */}
+                  {draggingPiece && dragPosition && boardContainerRef.current && (() => {
+                    const display = getPieceDisplay(draggingPiece.piece);
+                    const rect = boardContainerRef.current!.getBoundingClientRect();
+                    const boardSize = Math.min(rect.width, rect.height);
+                    const squareSize = boardSize / BOARD_SIZE;
+                    
+                    return (
+                      <div
+                        className="absolute pointer-events-none select-none flex items-center justify-center"
+                        style={{
+                          left: `${dragPosition.x}px`,
+                          top: `${dragPosition.y}px`,
+                          transform: 'translate(-50%, -50%)',
+                          zIndex: 10001,
+                          width: `${squareSize}px`,
+                          height: `${squareSize}px`,
+                        }}
+                      >
+                        <span className="text-lg sm:text-xl md:text-2xl lg:text-3xl filter drop-shadow-lg relative z-10">{display.emoji}</span>
+                        {display.isKing && (
+                          <span className="text-sm sm:text-base md:text-lg lg:text-xl absolute -top-0.5 sm:-top-1 left-1/2 transform -translate-x-1/2 filter drop-shadow-lg z-20">👑</span>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
                 {/* Animated piece overlay - renders above everything when moving */}
                 {animatingPiece && (() => {
