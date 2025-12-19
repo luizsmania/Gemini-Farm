@@ -40,6 +40,8 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   const [opponentNickname, setOpponentNickname] = useState<string>('Opponent');
   const [isLeaving, setIsLeaving] = useState(false);
   const [leaveTimeRemaining, setLeaveTimeRemaining] = useState<number>(0);
+  const [lastMove, setLastMove] = useState<{ from: number; to: number } | null>(null);
+  const [animatingPiece, setAnimatingPiece] = useState<{ from: number; to: number } | null>(null);
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
   const moveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const errorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -50,6 +52,17 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       console.log('handleMoveAccepted called with:', message);
       if (message.type === 'MOVE_ACCEPTED' && message.board) {
         console.log('Updating board with new state:', message.board);
+        
+        // Set animation if we have from and to
+        if (message.from !== undefined && message.to !== undefined) {
+          setAnimatingPiece({ from: message.from, to: message.to });
+          setLastMove({ from: message.from, to: message.to });
+          // Clear animation after it completes
+          setTimeout(() => {
+            setAnimatingPiece(null);
+          }, 600); // Match animation duration
+        }
+        
         setBoard(message.board);
         if (message.nextTurn) {
           setCurrentTurn(message.nextTurn);
@@ -124,6 +137,8 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         setContinueJumpFrom(null);
         setError(null);
         setShowRematch(false);
+        setLastMove(null);
+        setAnimatingPiece(null);
         setIsLeaving(false); // Cancel leave state if rejoining
         setLeaveTimeRemaining(0);
         if (leaveCountdownRef.current) {
@@ -210,11 +225,13 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     return (row + col) % 2 === 1;
   };
 
-  const getSquareColor = (index: number, isSelected: boolean, isLegalMove: boolean, isMandatoryCapture: boolean): string => {
+  const getSquareColor = (index: number, isSelected: boolean, isLegalMove: boolean, isMandatoryCapture: boolean, isLastMove: boolean): string => {
     if (isSelected) return 'bg-yellow-500/50';
     // Mandatory captures should show even if it's also a legal move for selected piece
     if (isMandatoryCapture) return 'bg-blue-500/60 border-2 border-blue-400';
     if (isLegalMove) return 'bg-green-500/30';
+    // Highlight last move squares
+    if (isLastMove) return 'bg-purple-500/40 border-2 border-purple-400';
     const { row, col } = indexToPos(index);
     return isDarkSquare(row, col) ? 'bg-amber-900' : 'bg-amber-50';
   };
@@ -223,6 +240,21 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     return {
       row: Math.floor(index / BOARD_SIZE),
       col: index % BOARD_SIZE,
+    };
+  };
+
+  // Calculate relative position for animation
+  const getRelativePosition = (fromIndex: number, toIndex: number): { x: number; y: number } => {
+    const fromPos = indexToPos(fromIndex);
+    const toPos = indexToPos(toIndex);
+    // Calculate difference in rows and columns
+    // Since each square is 1/8 of the board, the difference in percentage is:
+    const rowDiff = fromPos.row - toPos.row; // Negative means moving down
+    const colDiff = fromPos.col - toPos.col; // Negative means moving right
+    // Return as percentage offset (negative means coming from that direction)
+    return {
+      x: colDiff * 100,
+      y: rowDiff * 100,
     };
   };
 
@@ -622,11 +654,15 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     const isSelected = selectedSquare === boardIndex;
     const isLegalMove = legalMoves.includes(boardIndex);
     const isMandatoryCapture = mandatoryCaptures.includes(boardIndex);
+    const isLastMoveSquare = lastMove !== null && (lastMove.from === boardIndex || lastMove.to === boardIndex);
+    const isAnimatingFrom = animatingPiece !== null && animatingPiece.from === boardIndex;
+    const isAnimatingTo = animatingPiece !== null && animatingPiece.to === boardIndex;
+    
     // Debug log for mandatory captures
     if (isMandatoryCapture) {
       console.log('Rendering mandatory capture at displayIndex:', displayIndex, 'boardIndex:', boardIndex, 'mandatoryCaptures:', mandatoryCaptures);
     }
-    const colorClass = getSquareColor(boardIndex, isSelected, isLegalMove, isMandatoryCapture);
+    const colorClass = getSquareColor(boardIndex, isSelected, isLegalMove, isMandatoryCapture, isLastMoveSquare);
 
     return (
       <div
@@ -639,14 +675,33 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           handleSquareClick(boardIndex);
         }}
         className={`${colorClass} aspect-square flex items-center justify-center cursor-pointer transition-all active:scale-95 sm:hover:scale-105 border-2 touch-manipulation ${
-          isSelected ? 'border-yellow-400' : isMandatoryCapture ? 'border-blue-400' : 'border-transparent'
+          isSelected ? 'border-yellow-400' : 
+          isMandatoryCapture ? 'border-blue-400' : 
+          isLastMoveSquare ? 'border-purple-400' : 
+          'border-transparent'
         }`}
         style={{ position: 'relative', zIndex: 1 }}
       >
         {piece && (() => {
           const display = getPieceDisplay(piece);
+          // If this is the source square of animation, hide the piece (it's moving)
+          if (isAnimatingFrom) {
+            return null;
+          }
+          // If this is the destination square, animate the piece coming in
+          const shouldAnimate = isAnimatingTo && animatingPiece !== null;
+          const relativePos = shouldAnimate ? getRelativePosition(animatingPiece.from, animatingPiece.to) : { x: 0, y: 0 };
+          
           return (
-            <div className="relative flex items-center justify-center pointer-events-none select-none w-full h-full">
+            <div 
+              className="relative flex items-center justify-center pointer-events-none select-none w-full h-full"
+              style={shouldAnimate ? {
+                animation: 'pieceMove 0.6s ease-in-out',
+                animationFillMode: 'forwards',
+                '--move-x': `${relativePos.x}%`,
+                '--move-y': `${relativePos.y}%`,
+              } as React.CSSProperties & { '--move-x': string; '--move-y': string } : {}}
+            >
               <span className="text-lg sm:text-xl md:text-2xl lg:text-3xl filter drop-shadow-lg relative z-10">{display.emoji}</span>
               {display.isKing && (
                 <span className="text-sm sm:text-base md:text-lg lg:text-xl absolute -top-0.5 sm:-top-1 left-1/2 transform -translate-x-1/2 filter drop-shadow-lg z-20">👑</span>
