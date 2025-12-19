@@ -1110,8 +1110,8 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     const isSelected = selectedSquare === boardIndex;
     const isLegalMove = legalMoves.includes(boardIndex);
     const isMandatoryCapture = mandatoryCaptures.includes(boardIndex);
-    // Show only the destination square of the last move (not the source)
-    const isLastMoveSquare = lastMove !== null && lastMove.to === boardIndex;
+    // Show both from and to squares of the absolute last move (either mine or opponent's)
+    const isLastMoveSquare = lastMove !== null && (lastMove.from === boardIndex || lastMove.to === boardIndex);
     const isAnimatingFrom = animatingPiece !== null && animatingPiece.from === boardIndex;
     const isAnimatingTo = animatingPiece !== null && animatingPiece.to === boardIndex;
     
