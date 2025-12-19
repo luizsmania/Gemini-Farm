@@ -22,6 +22,9 @@ export interface GameState {
   canContinueJump: boolean;
   continueJumpFrom: number | null;
   moveCount?: number;
+  capturesRed?: number; // Number of pieces captured by red player
+  capturesBlack?: number; // Number of pieces captured by black player
+  moveTimerStart?: number; // Timestamp when current turn started
 }
 
 // WebSocket message types
@@ -56,6 +59,9 @@ export interface ServerMessage {
   opponentNickname?: string;
   timestamp?: number;
   timeRemaining?: number;
+  capturesRed?: number;
+  capturesBlack?: number;
+  moveTimeRemaining?: number; // Time remaining for current move (in seconds)
 }
 
 export interface LobbyInfo {

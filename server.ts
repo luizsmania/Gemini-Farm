@@ -56,6 +56,7 @@ const rematchRequests = new Map<string, Set<string>>(); // matchId -> Set of pla
 const playerNicknames = new Map<string, string>(); // playerId -> nickname
 const playerLeaveTimers = new Map<string, NodeJS.Timeout>(); // playerId -> leave timer
 const leavingPlayers = new Map<string, string>(); // playerId -> matchId (players who clicked leave but have 30s grace period)
+const moveTimers = new Map<string, NodeJS.Timeout>(); // matchId -> move timer (45 seconds per move)
 
 // Clean up lobby after a delay (in case of errors)
 function cleanupLobby(lobbyId: string) {
@@ -152,11 +153,17 @@ async function startGame(lobby: Lobby) {
       canContinueJump: false,
       continueJumpFrom: null,
       moveCount: 0,
+      capturesRed: 0,
+      capturesBlack: 0,
+      moveTimerStart: Date.now(),
     };
     
     activeGames.set(matchId, gameState);
     playerToGame.set(playerRed, matchId);
     playerToGame.set(playerBlack, matchId);
+    
+    // Start move timer for first turn (red)
+    startMoveTimer(matchId, gameState);
     
     // Remove lobby
     lobbies.delete(lobby.id);
@@ -177,6 +184,9 @@ async function startGame(lobby: Lobby) {
       yourColor: 'red',
       board,
       opponentNickname: playerBlackNickname,
+      capturesRed: 0,
+      capturesBlack: 0,
+      moveTimeRemaining: 45,
     } as ServerMessage);
     
     io.to(`player:${playerBlack}`).emit('GAME_START', {
@@ -185,6 +195,9 @@ async function startGame(lobby: Lobby) {
       yourColor: 'black',
       board,
       opponentNickname: playerRedNickname,
+      capturesRed: 0,
+      capturesBlack: 0,
+      moveTimeRemaining: 45,
     } as ServerMessage);
     
     console.log(`Game started: ${matchId}, Red: ${playerRed}, Black: ${playerBlack}`);
@@ -200,6 +213,12 @@ function handleDisconnect(playerId: string) {
   
   const game = activeGames.get(matchId);
   if (!game || game.winner !== null) return; // Game already ended
+  
+  // Check if there's already a disconnect timer running
+  if (playerDisconnectTimers.has(playerId)) {
+    console.log(`Player ${playerId} already has a disconnect timer, not starting a new one`);
+    return;
+  }
   
   // Set 30 second timer
   console.log(`Player ${playerId} disconnected, starting 30s forfeit timer`);
@@ -224,6 +243,11 @@ function handleDisconnect(playerId: string) {
     } as ServerMessage);
     
     // Cleanup
+    const oldTimer = moveTimers.get(matchId);
+    if (oldTimer) {
+      clearTimeout(oldTimer);
+      moveTimers.delete(matchId);
+    }
     activeGames.delete(matchId);
     playerToGame.delete(game.playerRed);
     playerToGame.delete(game.playerBlack);
@@ -248,6 +272,7 @@ function handleReconnect(playerId: string) {
   if (timer) {
     clearTimeout(timer);
     playerDisconnectTimers.delete(playerId);
+    console.log(`Player ${playerId} reconnected, cleared disconnect timer`);
     
     const matchId = playerToGame.get(playerId);
     if (matchId) {
@@ -262,6 +287,49 @@ function handleReconnect(playerId: string) {
       }
     }
   }
+}
+
+// Start move timer (45 seconds per move)
+function startMoveTimer(matchId: string, game: GameState) {
+  // Clear existing timer if any
+  const oldTimer = moveTimers.get(matchId);
+  if (oldTimer) {
+    clearTimeout(oldTimer);
+  }
+  
+  // Only start timer if game is active and not already won
+  if (game.winner !== null) return;
+  
+  const timer = setTimeout(async () => {
+    // Time's up - forfeit current player
+    const currentPlayerId = game.currentTurn === 'red' ? game.playerRed : game.playerBlack;
+    const winnerId = game.currentTurn === 'red' ? game.playerBlack : game.playerRed;
+    const winnerColor: 'red' | 'black' = game.currentTurn === 'red' ? 'black' : 'red';
+    
+    game.winner = winnerColor;
+    
+    try {
+      await finishMatch(matchId, winnerId);
+    } catch (error) {
+      console.error('Error finishing match:', error);
+    }
+    
+    // Notify players
+    io.to(`match:${matchId}`).emit('GAME_OVER', {
+      type: 'GAME_OVER',
+      winner: winnerColor,
+    } as ServerMessage);
+    
+    // Cleanup
+    activeGames.delete(matchId);
+    playerToGame.delete(game.playerRed);
+    playerToGame.delete(game.playerBlack);
+    moveTimers.delete(matchId);
+    
+    console.log(`Game ${matchId} forfeited by ${currentPlayerId} (timeout)`);
+  }, 45000); // 45 seconds
+  
+  moveTimers.set(matchId, timer);
 }
 
 io.on('connection', (socket) => {
@@ -337,6 +405,7 @@ io.on('connection', (socket) => {
             });
             
             // Send current game state to reconnecting player
+            const timeRemaining = game.moveTimerStart ? Math.max(0, 45 - Math.floor((Date.now() - game.moveTimerStart) / 1000)) : 45;
             socket.emit('GAME_START', {
               type: 'GAME_START',
               matchId,
@@ -344,6 +413,9 @@ io.on('connection', (socket) => {
               board: game.board,
               opponentNickname,
               nextTurn: game.currentTurn, // Include current turn
+              capturesRed: game.capturesRed || 0,
+              capturesBlack: game.capturesBlack || 0,
+              moveTimeRemaining: timeRemaining,
             } as ServerMessage);
             
             // Notify other player
@@ -421,6 +493,16 @@ io.on('connection', (socket) => {
     if (!currentPlayerId) {
       socket.emit('ERROR', { type: 'ERROR', message: 'Please set nickname first' } as ServerMessage);
       return;
+    }
+    
+    // Check if player is already in an active match
+    const activeMatchId = playerToGame.get(currentPlayerId);
+    if (activeMatchId) {
+      const activeGame = activeGames.get(activeMatchId);
+      if (activeGame && activeGame.winner === null) {
+        socket.emit('ERROR', { type: 'ERROR', message: 'You are already in an active match. Please leave it first.' } as ServerMessage);
+        return;
+      }
     }
     
     const lobbyId = `lobby_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -605,6 +687,17 @@ io.on('connection', (socket) => {
       game.board = result.newBoard;
       game.lastMove = { from: moveMessage.from!, to: moveMessage.to! };
       
+      // Track captures
+      if (!game.capturesRed) game.capturesRed = 0;
+      if (!game.capturesBlack) game.capturesBlack = 0;
+      if (result.captures.length > 0) {
+        if (game.currentTurn === 'red') {
+          game.capturesRed += result.captures.length;
+        } else {
+          game.capturesBlack += result.captures.length;
+        }
+      }
+      
       // Save move to database - count moves in game state
       if (!game.moveCount) game.moveCount = 0;
       game.moveCount++;
@@ -619,15 +712,23 @@ io.on('connection', (socket) => {
       const canJump = canContinueJump(game.board, moveMessage.to!, game.currentTurn);
       
       if (canJump && result.captures.length > 0) {
-        // Continue jump
+        // Continue jump - don't reset timer, same turn
         game.canContinueJump = true;
         game.continueJumpFrom = moveMessage.to!;
         game.currentTurn = playerColor; // Keep same turn
       } else {
-        // Switch turn
+        // Switch turn - reset timer
         game.canContinueJump = false;
         game.continueJumpFrom = null;
         game.currentTurn = game.currentTurn === 'red' ? 'black' : 'red';
+        game.moveTimerStart = Date.now(); // Reset timer for new turn
+        
+        // Clear old move timer and start new one
+        const oldTimer = moveTimers.get(moveMessage.matchId!);
+        if (oldTimer) {
+          clearTimeout(oldTimer);
+        }
+        startMoveTimer(moveMessage.matchId!, game);
       }
       
       // Check for game over
@@ -650,6 +751,11 @@ io.on('connection', (socket) => {
         } as ServerMessage);
         
         // Cleanup after a delay
+        const oldTimer = moveTimers.get(moveMessage.matchId!);
+        if (oldTimer) {
+          clearTimeout(oldTimer);
+          moveTimers.delete(moveMessage.matchId!);
+        }
         setTimeout(() => {
           activeGames.delete(moveMessage.matchId!);
           playerToGame.delete(game.playerRed);
@@ -665,6 +771,9 @@ io.on('connection', (socket) => {
           to: moveMessage.to,
           canContinueJump: game.canContinueJump,
           continueJumpFrom: game.continueJumpFrom,
+          capturesRed: game.capturesRed,
+          capturesBlack: game.capturesBlack,
+          moveTimeRemaining: game.moveTimerStart ? Math.max(0, 45 - Math.floor((Date.now() - game.moveTimerStart) / 1000)) : 45,
         } as ServerMessage;
         console.log(`[MOVE] Broadcasting MOVE_ACCEPTED to match:${moveMessage.matchId}`);
         console.log(`[MOVE] Board length: ${moveAcceptedMessage.board?.length}, Next turn: ${moveAcceptedMessage.nextTurn}`);
@@ -803,8 +912,10 @@ io.on('connection', (socket) => {
       timeRemaining: 30,
     } as ServerMessage);
     
-    // Update lobby list to show current match
-    broadcastLobbyList(currentPlayerId);
+    // Update lobby list to show current match immediately
+    setTimeout(() => {
+      broadcastLobbyList(currentPlayerId);
+    }, 100); // Small delay to ensure state is updated
   });
   
   // Rejoin match (cancel leave)
@@ -835,6 +946,7 @@ io.on('connection', (socket) => {
       const opponentNickname = playerNicknames.get(opponentId) || 'Opponent';
       
       // Send game state back to player
+      const timeRemaining = game.moveTimerStart ? Math.max(0, 45 - Math.floor((Date.now() - game.moveTimerStart) / 1000)) : 45;
       socket.emit('GAME_START', {
         type: 'GAME_START',
         matchId: message.matchId,
@@ -842,6 +954,9 @@ io.on('connection', (socket) => {
         board: game.board,
         opponentNickname,
         nextTurn: game.currentTurn,
+        capturesRed: game.capturesRed || 0,
+        capturesBlack: game.capturesBlack || 0,
+        moveTimeRemaining: timeRemaining,
       } as ServerMessage);
       
       // Update lobby list
@@ -891,6 +1006,11 @@ io.on('connection', (socket) => {
     } as ServerMessage);
     
     // Cleanup
+    const oldTimer = moveTimers.get(message.matchId);
+    if (oldTimer) {
+      clearTimeout(oldTimer);
+      moveTimers.delete(message.matchId);
+    }
     activeGames.delete(message.matchId);
     playerToGame.delete(game.playerRed);
     playerToGame.delete(game.playerBlack);
@@ -908,7 +1028,21 @@ io.on('connection', (socket) => {
     console.log(`Client ${socket.id} disconnected: ${reason}`);
     
     if (currentPlayerId) {
-      handleDisconnect(currentPlayerId);
+      // Only trigger disconnect timer if it's an actual disconnect (not a reconnection attempt)
+      // Socket.IO will automatically try to reconnect, so we give it time
+      // Only start the timer if it's a real disconnect (not just a temporary network issue)
+      if (reason === 'io server disconnect' || reason === 'transport close') {
+        handleDisconnect(currentPlayerId);
+      } else {
+        // For other disconnect reasons (like 'transport error'), wait a bit before starting timer
+        // This gives the client time to reconnect
+        setTimeout(() => {
+          // Check if player has reconnected (socket is still disconnected after delay)
+          if (!socket.connected && currentPlayerId) {
+            handleDisconnect(currentPlayerId);
+          }
+        }, 5000); // Wait 5 seconds before starting disconnect timer
+      }
       cleanupLobby(currentPlayerId);
     }
   });

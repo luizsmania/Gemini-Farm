@@ -204,7 +204,7 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleSetNickname()}
-              placeholder="Enter your nickname"
+              placeholder={propNickname ? `Last used: ${propNickname}` : "Enter your nickname"}
               className="w-full px-4 py-3 text-base sm:text-lg bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
               maxLength={20}
             />

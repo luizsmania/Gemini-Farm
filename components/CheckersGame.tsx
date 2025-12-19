@@ -15,6 +15,46 @@ interface CheckersGameProps {
 
 const BOARD_SIZE = 8;
 
+// Simple sound effects using Web Audio API
+const playSound = (type: 'move' | 'capture' | 'error' | 'turn') => {
+  try {
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    switch (type) {
+      case 'move':
+        oscillator.frequency.value = 440;
+        gainNode.gain.value = 0.1;
+        oscillator.type = 'sine';
+        break;
+      case 'capture':
+        oscillator.frequency.value = 600;
+        gainNode.gain.value = 0.15;
+        oscillator.type = 'square';
+        break;
+      case 'error':
+        oscillator.frequency.value = 200;
+        gainNode.gain.value = 0.1;
+        oscillator.type = 'sawtooth';
+        break;
+      case 'turn':
+        oscillator.frequency.value = 523;
+        gainNode.gain.value = 0.1;
+        oscillator.type = 'sine';
+        break;
+    }
+    
+    oscillator.start();
+    oscillator.stop(audioContext.currentTime + 0.1);
+  } catch (e) {
+    // Ignore audio errors (e.g., user interaction required)
+  }
+};
+
 export const CheckersGame: React.FC<CheckersGameProps> = ({
   matchId: initialMatchId,
   initialBoard,
@@ -35,17 +75,32 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [opponentDisconnected, setOpponentDisconnected] = useState(false);
   const [showRematch, setShowRematch] = useState(false);
-  const [chatMessages, setChatMessages] = useState<Array<{ senderNickname: string; message: string; timestamp: number; isOwn: boolean }>>([]);
+  const [chatMessages, setChatMessages] = useState<Array<{ senderNickname: string; message: string; timestamp: number; isOwn: boolean }>>(() => {
+    // Load chat history from localStorage on mount
+    const savedChat = localStorage.getItem(`chat_${initialMatchId}`);
+    if (savedChat) {
+      try {
+        return JSON.parse(savedChat);
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
   const [chatInput, setChatInput] = useState('');
   const [opponentNickname, setOpponentNickname] = useState<string>('Opponent');
   const [isLeaving, setIsLeaving] = useState(false);
   const [leaveTimeRemaining, setLeaveTimeRemaining] = useState<number>(0);
   const [lastMove, setLastMove] = useState<{ from: number; to: number } | null>(null);
   const [animatingPiece, setAnimatingPiece] = useState<{ from: number; to: number } | null>(null);
+  const [capturesRed, setCapturesRed] = useState<number>(0);
+  const [capturesBlack, setCapturesBlack] = useState<number>(0);
+  const [moveTimeRemaining, setMoveTimeRemaining] = useState<number>(45);
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
   const moveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const errorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const leaveCountdownRef = useRef<NodeJS.Timeout | null>(null);
+  const moveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const handleMoveAccepted = (message: ServerMessage) => {
@@ -65,13 +120,39 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         
         setBoard(message.board);
         if (message.nextTurn) {
+          const wasMyTurn = currentTurn === yourColor;
+          const hadCaptures = (message.capturesRed !== undefined && message.capturesRed > capturesRed) || 
+                             (message.capturesBlack !== undefined && message.capturesBlack > capturesBlack);
           setCurrentTurn(message.nextTurn);
+          // Play sound if it's now my turn
+          if (message.nextTurn === yourColor && !wasMyTurn) {
+            playSound('turn');
+            if ('vibrate' in navigator) {
+              navigator.vibrate([50, 30, 50]);
+            }
+          }
+          // Check if this was a capture
+          if (hadCaptures) {
+            playSound('capture');
+            if ('vibrate' in navigator) {
+              navigator.vibrate(30);
+            }
+          }
         }
         if (message.canContinueJump !== undefined) {
           setCanContinueJump(message.canContinueJump);
         }
         if (message.continueJumpFrom !== undefined) {
           setContinueJumpFrom(message.continueJumpFrom);
+        }
+        if (message.capturesRed !== undefined) {
+          setCapturesRed(message.capturesRed);
+        }
+        if (message.capturesBlack !== undefined) {
+          setCapturesBlack(message.capturesBlack);
+        }
+        if (message.moveTimeRemaining !== undefined) {
+          setMoveTimeRemaining(message.moveTimeRemaining);
         }
         // Only clear selection if not continuing a jump
         if (!message.canContinueJump) {
@@ -141,9 +222,27 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         setAnimatingPiece(null);
         setIsLeaving(false); // Cancel leave state if rejoining
         setLeaveTimeRemaining(0);
+        if (message.capturesRed !== undefined) {
+          setCapturesRed(message.capturesRed);
+        }
+        if (message.capturesBlack !== undefined) {
+          setCapturesBlack(message.capturesBlack);
+        }
+        if (message.moveTimeRemaining !== undefined) {
+          setMoveTimeRemaining(message.moveTimeRemaining);
+        }
         if (leaveCountdownRef.current) {
           clearInterval(leaveCountdownRef.current);
           leaveCountdownRef.current = null;
+        }
+        // Load chat history from localStorage for this match
+        const savedChat = localStorage.getItem(`chat_${message.matchId}`);
+        if (savedChat) {
+          try {
+            setChatMessages(JSON.parse(savedChat));
+          } catch {
+            // Ignore parse errors
+          }
         }
         // Don't clear chat on rejoin - keep chat history
         if (message.opponentNickname) {
@@ -161,12 +260,17 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       if (message.type === 'CHAT_MESSAGE' && message.senderNickname && message.message) {
         // Check if this is our own message by comparing nickname
         const isOwn = nickname ? message.senderNickname === nickname : false;
-        setChatMessages(prev => [...prev, {
-          senderNickname: message.senderNickname!,
-          message: message.message!,
-          timestamp: message.timestamp || Date.now(),
-          isOwn
-        }]);
+        setChatMessages(prev => {
+          const newMessages = [...prev, {
+            senderNickname: message.senderNickname!,
+            message: message.message!,
+            timestamp: message.timestamp || Date.now(),
+            isOwn
+          }];
+          // Save to localStorage
+          localStorage.setItem(`chat_${matchId}`, JSON.stringify(newMessages));
+          return newMessages;
+        });
       }
     };
 
@@ -208,8 +312,39 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       if (errorTimeoutRef.current) {
         clearTimeout(errorTimeoutRef.current);
       }
+      if (moveTimerRef.current) {
+        clearInterval(moveTimerRef.current);
+      }
     };
   }, [nickname]);
+
+  // Move timer countdown
+  useEffect(() => {
+    if (currentTurn === yourColor && !winner && moveTimeRemaining > 0) {
+      moveTimerRef.current = setInterval(() => {
+        setMoveTimeRemaining(prev => {
+          if (prev <= 1) {
+            if (moveTimerRef.current) {
+              clearInterval(moveTimerRef.current);
+            }
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      if (moveTimerRef.current) {
+        clearInterval(moveTimerRef.current);
+        moveTimerRef.current = null;
+      }
+    }
+    
+    return () => {
+      if (moveTimerRef.current) {
+        clearInterval(moveTimerRef.current);
+      }
+    };
+  }, [currentTurn, yourColor, winner, moveTimeRemaining]);
 
   const getPieceDisplay = (piece: Piece): { emoji: string; isKing: boolean } => {
     switch (piece) {
@@ -501,6 +636,11 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       return;
     }
 
+    // Haptic feedback on click
+    if ('vibrate' in navigator) {
+      navigator.vibrate(10);
+    }
+
     if (canContinueJump && continueJumpFrom !== null) {
       // If we have the piece selected and click on a legal move, make the move
       if (selectedSquare === continueJumpFrom) {
@@ -558,6 +698,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         console.log('Selected piece at', index, 'Legal moves:', moves);
         if (moves.length === 0) {
           setError('No legal moves available for this piece');
+          playSound('error');
         }
       } else {
         console.log('Clicked on empty square or opponent piece, but no piece selected');
@@ -579,6 +720,10 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           console.log('Making move from', selectedSquare, 'to', index);
           console.log('Socket connected?', checkersWebSocketService.isConnected());
           const fromSquare = selectedSquare; // Capture value for timeout check
+          
+          // Play move sound
+          playSound('move');
+          
           checkersWebSocketService.makeMove(matchId, selectedSquare, index);
           setError(null);
           setMandatoryCaptures([]);
@@ -604,26 +749,28 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           setSelectedSquare(null);
           setLegalMoves([]);
           setMandatoryCaptures([]);
-        } else {
-          // Check if captures are mandatory
-          const allMandatoryCaptures = calculateAllMandatoryCaptures();
-          console.log('Checking mandatory captures:', allMandatoryCaptures);
-          if (allMandatoryCaptures.length > 0) {
-            console.log('Invalid move - captures are mandatory. Showing', allMandatoryCaptures.length, 'mandatory captures');
-            setError('Capture is mandatory! Highlighted moves in blue must be made.');
-            setMandatoryCaptures(allMandatoryCaptures);
-            // Clear error after 5 seconds
-            if (errorTimeoutRef.current) {
-              clearTimeout(errorTimeoutRef.current);
-            }
-            errorTimeoutRef.current = setTimeout(() => {
-              setError(null);
-              errorTimeoutRef.current = null;
-            }, 5000);
           } else {
+            // Check if captures are mandatory
+            const allMandatoryCaptures = calculateAllMandatoryCaptures();
+            console.log('Checking mandatory captures:', allMandatoryCaptures);
+            if (allMandatoryCaptures.length > 0) {
+              console.log('Invalid move - captures are mandatory. Showing', allMandatoryCaptures.length, 'mandatory captures');
+              setError('Capture is mandatory! Select a piece that can capture (blue squares).');
+              setMandatoryCaptures(allMandatoryCaptures);
+              playSound('error');
+              // Clear error after 5 seconds
+              if (errorTimeoutRef.current) {
+                clearTimeout(errorTimeoutRef.current);
+              }
+              errorTimeoutRef.current = setTimeout(() => {
+                setError(null);
+                errorTimeoutRef.current = null;
+              }, 5000);
+            } else {
             console.log('Invalid move - not in legal moves list');
-            setError(`Invalid move - select a highlighted square. Legal moves: ${legalMoves.join(', ')}`);
+            setError(`Invalid move - select a highlighted square.`);
             setMandatoryCaptures([]);
+            playSound('error');
             // Clear error after 3 seconds
             if (errorTimeoutRef.current) {
               clearTimeout(errorTimeoutRef.current);
@@ -741,7 +888,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
 
   // Determine opponent color
   const opponentColor = yourColor === 'red' ? 'black' : 'red';
-  const opponentDisplayName = opponentNickname || 'Opponent';
+  const opponentDisplayName = opponentNickname ? `Opponent: ${opponentNickname}` : 'Opponent';
   const currentPlayerDisplayName = nickname || 'You';
 
   return (
@@ -756,6 +903,11 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
               <div className="flex justify-between items-center mb-1 sm:mb-2 flex-shrink-0">
                 <div className="flex items-center gap-1.5 sm:gap-2">
                   <h2 className="text-base sm:text-lg font-semibold text-white">Checkers</h2>
+                  {currentTurn === yourColor && !winner && (
+                    <span className="text-[10px] sm:text-xs text-green-400 bg-green-400/20 px-1.5 py-0.5 rounded animate-pulse">
+                      It's your turn now!
+                    </span>
+                  )}
                   {canContinueJump && (
                     <span className="text-[10px] sm:text-xs text-yellow-400 bg-yellow-400/20 px-1.5 py-0.5 rounded">
                       Continue jump!
@@ -792,6 +944,9 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
                         : 'bg-slate-600 text-slate-300'
                     }`}>
                       {opponentColor === 'red' ? 'Red' : 'Black'}
+                    </span>
+                    <span className="text-[10px] sm:text-xs text-slate-400 flex items-center gap-0.5">
+                      {opponentColor === 'red' ? '🔴' : '⚫'} {opponentColor === 'red' ? capturesRed : capturesBlack}
                     </span>
                     {currentTurn === opponentColor && (
                       <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-green-500 rounded-full flex-shrink-0"></span>
@@ -882,8 +1037,18 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
                     }`}>
                       {yourColor === 'red' ? 'Red' : 'Black'}
                     </span>
+                    <span className="text-[10px] sm:text-xs text-slate-400 flex items-center gap-0.5">
+                      {yourColor === 'red' ? '🔴' : '⚫'} {yourColor === 'red' ? capturesRed : capturesBlack}
+                    </span>
                     {currentTurn === yourColor && (
-                      <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-green-500 rounded-full flex-shrink-0"></span>
+                      <>
+                        <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-green-500 rounded-full flex-shrink-0"></span>
+                        <span className={`text-[10px] sm:text-xs px-1.5 py-0.5 rounded flex-shrink-0 ${
+                          moveTimeRemaining <= 10 ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'
+                        }`}>
+                          {moveTimeRemaining}s
+                        </span>
+                      </>
                     )}
                   </div>
                 </div>
@@ -938,7 +1103,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
                           {msg.senderNickname}
                         </div>
                         <div
-                          className={`max-w-[85%] rounded-lg px-2 sm:px-2.5 py-1 sm:py-1.5 text-xs sm:text-sm break-words ${
+                          className={`max-w-[85%] rounded-lg px-2 sm:px-2.5 py-1 sm:py-1.5 text-sm sm:text-base break-words ${
                             msg.isOwn
                               ? 'bg-purple-600 text-white'
                               : 'bg-slate-700 text-slate-100'

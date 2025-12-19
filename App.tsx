@@ -3,6 +3,7 @@ import { CheckersHub } from './components/CheckersHub';
 import { CheckersGame } from './components/CheckersGame';
 import { CheckersHistory } from './components/CheckersHistory';
 import { Board, Color } from './types/checkers';
+import { checkersWebSocketService } from './services/checkersWebSocketService';
 
 type View = 'hub' | 'game' | 'history';
 
@@ -54,6 +55,8 @@ function App() {
   };
 
   const handleLogout = () => {
+    // Disconnect WebSocket
+    checkersWebSocketService.disconnect();
     // Clear localStorage
     localStorage.removeItem(STORAGE_KEY_NICKNAME);
     localStorage.removeItem(STORAGE_KEY_PLAYER_ID);
