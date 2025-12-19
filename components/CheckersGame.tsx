@@ -60,8 +60,11 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         if (message.continueJumpFrom !== undefined) {
           setContinueJumpFrom(message.continueJumpFrom);
         }
-        setSelectedSquare(null);
-        setLegalMoves([]);
+        // Only clear selection if not continuing a jump
+        if (!message.canContinueJump) {
+          setSelectedSquare(null);
+          setLegalMoves([]);
+        }
         setMandatoryCaptures([]);
         setError(null);
       } else {
@@ -424,6 +427,16 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     // Otherwise return empty (no mandatory captures)
     return hasAnyCaptures ? allCaptures : [];
   }, [board, currentTurn, calculateLegalMoves]);
+
+  // Auto-select piece and calculate moves when canContinueJump becomes true
+  useEffect(() => {
+    if (canContinueJump && continueJumpFrom !== null && currentTurn === yourColor) {
+      setSelectedSquare(continueJumpFrom);
+      const moves = calculateLegalMoves(continueJumpFrom);
+      setLegalMoves(moves);
+      console.log('Auto-selected piece for continuing jump at', continueJumpFrom, 'with moves:', moves);
+    }
+  }, [canContinueJump, continueJumpFrom, currentTurn, yourColor, calculateLegalMoves]);
 
   const handleSquareClick = useCallback((index: number) => {
     console.log('handleSquareClick called with index:', index);

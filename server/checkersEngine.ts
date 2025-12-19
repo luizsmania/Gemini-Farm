@@ -321,6 +321,11 @@ export function validateMove(
     if (allCaptures.length > 0 && !isCapture) {
       return { valid: false, reason: 'Capture is mandatory' };
     }
+  } else {
+    // If must continue jump, the move MUST be a capture
+    if (!isCapture) {
+      return { valid: false, reason: 'Must continue jump with a capture' };
+    }
   }
   
   // Validate capture
