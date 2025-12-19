@@ -22,6 +22,7 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
   const [error, setError] = useState<string | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const autoSetRef = useRef(false);
+  const ignoreGameStartRef = useRef(false); // Flag to ignore GAME_START after leaving
 
   // Sync local nickname state with prop changes (e.g., on page refresh)
   useEffect(() => {
@@ -109,8 +110,11 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
 
     const handleGameStart = (message: ServerMessage) => {
       if (message.type === 'GAME_START' && message.matchId && message.yourColor && message.board) {
-        // If rejoining, we need to update the view to game
-        onGameStart(message.matchId, message.yourColor, message.board);
+        // Only navigate to game if user explicitly requested it (not auto-rejoin after leaving)
+        // The ignoreGameStartRef flag is set when user leaves, and cleared when they click "Return"
+        if (!ignoreGameStartRef.current) {
+          onGameStart(message.matchId, message.yourColor, message.board);
+        }
       }
     };
 
@@ -120,16 +124,26 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
       }
     };
 
+    const handleMatchLeaving = (message: ServerMessage) => {
+      if (message.type === 'MATCH_LEAVING') {
+        // Set flag to ignore GAME_START messages after leaving
+        // This prevents auto-rejoining when user clicks X to leave
+        ignoreGameStartRef.current = true;
+      }
+    };
+
     checkersWebSocketService.on('NICKNAME_SET', handleNicknameSet);
     checkersWebSocketService.on('LOBBY_LIST', handleLobbyList);
     checkersWebSocketService.on('GAME_START', handleGameStart);
     checkersWebSocketService.on('ERROR', handleError);
+    checkersWebSocketService.on('MATCH_LEAVING', handleMatchLeaving);
 
     return () => {
       checkersWebSocketService.off('NICKNAME_SET', handleNicknameSet);
       checkersWebSocketService.off('LOBBY_LIST', handleLobbyList);
       checkersWebSocketService.off('GAME_START', handleGameStart);
       checkersWebSocketService.off('ERROR', handleError);
+      checkersWebSocketService.off('MATCH_LEAVING', handleMatchLeaving);
     };
   }, [onGameStart, onNicknameSet]);
 
@@ -145,6 +159,8 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
   const handleCreateLobby = () => {
     setLoading(true);
     setError(null);
+    // Clear the ignore flag when creating a new lobby
+    ignoreGameStartRef.current = false;
     checkersWebSocketService.createLobby();
     setLoading(false);
   };
@@ -152,6 +168,9 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
   const handleJoinLobby = (lobbyId: string) => {
     setLoading(true);
     setError(null);
+    // Clear the ignore flag when user explicitly clicks to join/return
+    // This allows GAME_START messages to navigate to the game
+    ignoreGameStartRef.current = false;
     checkersWebSocketService.joinLobby(lobbyId);
     setLoading(false);
   };
