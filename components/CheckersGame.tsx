@@ -648,8 +648,8 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     // Start 30-second leave grace period
     checkersWebSocketService.leaveMatch(matchId);
     // Navigate to hub so user can see "Current Match" in lobby list
-    // The server will send MATCH_LEAVING message which will start the countdown
-    // After 30 seconds, onLeave() will be called automatically
+    // The server will send MATCH_LEAVING message and update lobby list
+    // Don't clear gameState yet - let the hub show the current match
     onLeave();
   };
 

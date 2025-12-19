@@ -26,7 +26,7 @@ export interface GameState {
 
 // WebSocket message types
 export interface ClientMessage {
-  type: 'SET_NICKNAME' | 'CREATE_LOBBY' | 'JOIN_LOBBY' | 'MOVE' | 'REMATCH_ACCEPT' | 'LEAVE_MATCH' | 'CHAT_MESSAGE' | 'REJOIN_MATCH';
+  type: 'SET_NICKNAME' | 'CREATE_LOBBY' | 'JOIN_LOBBY' | 'MOVE' | 'REMATCH_ACCEPT' | 'LEAVE_MATCH' | 'CHAT_MESSAGE' | 'REJOIN_MATCH' | 'FORFEIT_MATCH';
   nickname?: string;
   playerId?: string; // For reconnection
   lobbyId?: string;

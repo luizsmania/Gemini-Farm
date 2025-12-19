@@ -156,6 +156,13 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
     setLoading(false);
   };
 
+  const handleForfeitMatch = (matchId: string) => {
+    setLoading(true);
+    setError(null);
+    checkersWebSocketService.forfeitMatch(matchId);
+    setLoading(false);
+  };
+
   if (!nicknameSet) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4 sm:p-6">
@@ -271,7 +278,7 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
                       </div>
                       {lobby.isCurrentMatch && (
                         <span className="text-[10px] sm:text-xs text-orange-400 bg-orange-400/20 px-1.5 py-0.5 rounded">
-                          Rejoin
+                          Current Lobby
                         </span>
                       )}
                       {lobby.isYourLobby && (
@@ -284,14 +291,36 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
                       {lobby.playerCount}/{lobby.maxPlayers} players
                     </div>
                   </div>
-                  <Button
-                    onClick={() => lobby.isCurrentMatch ? handleJoinLobby(lobby.id) : handleJoinLobby(lobby.id)}
-                    disabled={loading || (!lobby.isCurrentMatch && lobby.playerCount >= lobby.maxPlayers)}
-                    size="sm"
-                    className="w-full sm:w-auto"
-                  >
-                    {lobby.isCurrentMatch ? 'Rejoin Match' : (lobby.playerCount >= lobby.maxPlayers ? 'Full' : 'Join')}
-                  </Button>
+                  {lobby.isCurrentMatch ? (
+                    <div className="flex gap-2 w-full sm:w-auto">
+                      <Button
+                        onClick={() => handleJoinLobby(lobby.id)}
+                        disabled={loading}
+                        size="sm"
+                        className="flex-1 sm:flex-none"
+                      >
+                        Return
+                      </Button>
+                      <Button
+                        onClick={() => handleForfeitMatch(lobby.id)}
+                        disabled={loading}
+                        variant="danger"
+                        size="sm"
+                        className="flex-1 sm:flex-none"
+                      >
+                        Forfeit
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      onClick={() => handleJoinLobby(lobby.id)}
+                      disabled={loading || lobby.playerCount >= lobby.maxPlayers}
+                      size="sm"
+                      className="w-full sm:w-auto"
+                    >
+                      {lobby.playerCount >= lobby.maxPlayers ? 'Full' : 'Join'}
+                    </Button>
+                  )}
                 </div>
               ))}
             </div>

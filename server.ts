@@ -434,6 +434,9 @@ io.on('connection', (socket) => {
     
     lobbies.set(lobbyId, lobby);
     socket.join(`lobby:${lobbyId}`);
+    // Broadcast to all players so everyone sees the new lobby
+    broadcastLobbyList();
+    // Also send personalized list to creator (includes isYourLobby flag)
     broadcastLobbyList(currentPlayerId);
     
     console.log(`Lobby ${lobbyId} created by ${currentNickname}`);
@@ -520,7 +523,10 @@ io.on('connection', (socket) => {
     if (lobby.players.length === 2) {
       startGame(lobby);
     } else {
+      // Broadcast to all players so everyone sees the updated lobby
       broadcastLobbyList();
+      // Also send personalized list to the player who joined
+      broadcastLobbyList(currentPlayerId);
     }
   });
   
@@ -831,6 +837,61 @@ io.on('connection', (socket) => {
       // Update lobby list
       broadcastLobbyList(currentPlayerId);
     }
+  });
+  
+  // Forfeit match (immediate forfeit, no grace period)
+  socket.on('FORFEIT_MATCH', async (message: ClientMessage) => {
+    if (!currentPlayerId || !message.matchId) return;
+    
+    const game = activeGames.get(message.matchId);
+    if (!game) return;
+    
+    // Verify player is in this match
+    if (currentPlayerId !== game.playerRed && currentPlayerId !== game.playerBlack) {
+      socket.emit('ERROR', { type: 'ERROR', message: 'You are not in this match' } as ServerMessage);
+      return;
+    }
+    
+    // Determine winner (opponent)
+    const winnerId = currentPlayerId === game.playerRed ? game.playerBlack : game.playerRed;
+    const winnerColor: 'red' | 'black' = currentPlayerId === game.playerRed ? 'black' : 'red';
+    
+    // Set winner
+    game.winner = winnerColor;
+    
+    // Cancel any leave timers
+    const leaveTimer = playerLeaveTimers.get(currentPlayerId);
+    if (leaveTimer) {
+      clearTimeout(leaveTimer);
+      playerLeaveTimers.delete(currentPlayerId);
+    }
+    leavingPlayers.delete(currentPlayerId);
+    
+    // Save to database
+    try {
+      await finishMatch(message.matchId, winnerId);
+    } catch (error) {
+      console.error('Error finishing match in database:', error);
+    }
+    
+    // Notify both players
+    io.to(`match:${message.matchId}`).emit('GAME_OVER', {
+      type: 'GAME_OVER',
+      winner: winnerColor,
+    } as ServerMessage);
+    
+    // Cleanup
+    activeGames.delete(message.matchId);
+    playerToGame.delete(game.playerRed);
+    playerToGame.delete(game.playerBlack);
+    
+    // Remove from match room
+    socket.leave(`match:${message.matchId}`);
+    
+    // Update lobby list
+    broadcastLobbyList(currentPlayerId);
+    
+    console.log(`Match ${message.matchId} forfeited by ${currentNickname}`);
   });
   
   socket.on('disconnect', (reason) => {

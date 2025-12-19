@@ -188,6 +188,10 @@ class CheckersWebSocketService {
     this.send({ type: 'REJOIN_MATCH', matchId });
   }
 
+  forfeitMatch(matchId: string): void {
+    this.send({ type: 'FORFEIT_MATCH', matchId });
+  }
+
   isConnected(): boolean {
     return this.socket?.connected || false;
   }
