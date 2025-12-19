@@ -100,10 +100,10 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         if (message.from !== undefined && message.to !== undefined && !wasOurMove) {
           setAnimatingPiece({ from: message.from, to: message.to });
           setLastMove({ from: message.from, to: message.to });
-          // Clear animation after it completes - chess.com uses ~200ms for smooth feel
+          // Clear animation after it completes - faster 100ms animation
           setTimeout(() => {
             setAnimatingPiece(null);
-          }, 200);
+          }, 100);
         } else if (message.from !== undefined && message.to !== undefined) {
           // Our move - just update last move, no animation needed
           setLastMove({ from: message.from, to: message.to });
@@ -761,8 +761,31 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       // Check if it's a valid move
       const moves = calculateLegalMoves(currentDraggingPiece.boardIndex);
       if (moves.includes(dropIndex)) {
-        // Valid move - execute it (sound will play when move is accepted)
-        checkersWebSocketService.makeMove(matchId, currentDraggingPiece.boardIndex, dropIndex);
+        // Optimistically update board instantly (chess.com style)
+        const newBoard = [...board];
+        const piece = newBoard[currentDraggingPiece.boardIndex];
+        newBoard[currentDraggingPiece.boardIndex] = null;
+        newBoard[dropIndex] = piece;
+        
+        // Check for king promotion
+        const { row } = indexToPos(dropIndex);
+        if (piece === 'r' && row === 0) {
+          newBoard[dropIndex] = 'R'; // Promote to king
+        } else if (piece === 'b' && row === BOARD_SIZE - 1) {
+          newBoard[dropIndex] = 'B'; // Promote to king
+        }
+        
+        // Save original board for potential revert
+        setPendingMove({ from: currentDraggingPiece.boardIndex, to: dropIndex, board: [...board] });
+        
+        // Update board instantly (no animation for user's own moves)
+        setBoard(newBoard);
+        
+        // Send move to server with 50ms delay for smooth feel
+        setTimeout(() => {
+          checkersWebSocketService.makeMove(matchId, currentDraggingPiece.boardIndex, dropIndex);
+        }, 50);
+        
         setError(null);
         setMandatoryCaptures([]);
         // Keep piece selected and legal moves visible - they'll be cleared when move is accepted or user clicks another piece
@@ -1341,7 +1364,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
                         zIndex: 10000,
                         width: `${squareSizePercent}%`,
                         height: `${squareSizePercent}%`,
-                        animation: 'pieceMoveOverlay 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                        animation: 'pieceMoveOverlay 0.1s cubic-bezier(0.4, 0, 0.2, 1)',
                         animationFillMode: 'forwards',
                         '--move-x': `${moveXPercent}%`,
                         '--move-y': `${moveYPercent}%`,
