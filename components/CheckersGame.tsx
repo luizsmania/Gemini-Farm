@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { checkersWebSocketService } from '../services/checkersWebSocketService';
 import { ServerMessage, Board, Piece, Color } from '../types/checkers';
 import { Button } from './Button';
@@ -29,6 +29,146 @@ const playSound = (type: 'move-self' | 'move-opponent' | 'capture' | 'error' | '
     console.debug('Audio creation failed:', e);
   }
 };
+
+// Memoized square component interface
+interface CheckersSquareProps {
+  displayIndex: number;
+  boardIndex: number;
+  piece: Piece;
+  isSelected: boolean;
+  isLegalMove: boolean;
+  isMandatoryCapture: boolean;
+  isLastMoveSquare: boolean;
+  isAnimatingFrom: boolean;
+  isAnimatingTo: boolean;
+  canCapture: boolean;
+  isDragging: boolean;
+  colorClass: string;
+  currentTurn: Color;
+  yourColor: Color;
+  draggingPiece: { boardIndex: number; piece: Piece } | null;
+  hasDragged: boolean;
+  onMouseDown: (e: React.MouseEvent, boardIndex: number) => void;
+  onTouchStart: (e: React.TouchEvent, boardIndex: number) => void;
+  onClick: (e: React.MouseEvent, boardIndex: number) => void;
+  getPieceDisplay: (piece: Piece) => { emoji: string; isKing: boolean };
+}
+
+// Memoized square component - only re-renders when relevant props change
+const CheckersSquare = React.memo<CheckersSquareProps>(({
+  displayIndex,
+  boardIndex,
+  piece,
+  isSelected,
+  isLegalMove,
+  isMandatoryCapture,
+  isLastMoveSquare,
+  isAnimatingFrom,
+  isAnimatingTo,
+  canCapture,
+  isDragging,
+  colorClass,
+  currentTurn,
+  yourColor,
+  draggingPiece,
+  hasDragged,
+  onMouseDown,
+  onTouchStart,
+  onClick,
+  getPieceDisplay,
+}) => {
+  return (
+    <div
+      key={displayIndex}
+      onMouseDown={(e) => {
+        if (piece && !draggingPiece && currentTurn === yourColor) {
+          const pieceColor = (piece === 'r' || piece === 'R') ? 'red' : 'black';
+          if (pieceColor === yourColor) {
+            e.stopPropagation();
+            onMouseDown(e, boardIndex);
+          }
+        }
+      }}
+      onTouchStart={(e) => {
+        if (piece && !draggingPiece && e.touches.length > 0) {
+          e.preventDefault();
+          e.stopPropagation();
+          const touch = e.touches[0];
+          onTouchStart(e, boardIndex);
+        }
+      }}
+      onClick={(e) => {
+        if (!hasDragged) {
+          e.preventDefault();
+          e.stopPropagation();
+          onClick(e, boardIndex);
+        }
+      }}
+      className={`${colorClass} aspect-square flex items-center justify-center transition-all active:scale-95 sm:hover:scale-105 border-2 touch-manipulation ${
+        piece && !draggingPiece && currentTurn === yourColor && ((piece === 'r' || piece === 'R') ? 'red' : 'black') === yourColor
+          ? 'cursor-grab active:cursor-grabbing' 
+          : 'cursor-pointer'
+      } ${
+        isSelected ? 'border-yellow-400' : 
+        isMandatoryCapture ? 'border-blue-400' : 
+        isLastMoveSquare ? 'border-purple-400' : 
+        'border-transparent'
+      }`}
+      style={{ position: 'relative', zIndex: isAnimatingTo ? 9998 : isDragging ? 9999 : 1 }}
+    >
+      {piece && (() => {
+        const display = getPieceDisplay(piece);
+        if (isAnimatingFrom || isAnimatingTo) {
+          return null;
+        }
+        if (isDragging) {
+          return null;
+        }
+        
+        return (
+          <div 
+            className="relative flex items-center justify-center pointer-events-none select-none w-full h-full"
+          >
+            <span className="text-lg sm:text-xl md:text-2xl lg:text-3xl filter drop-shadow-lg relative z-10">{display.emoji}</span>
+            {display.isKing && (
+              <span className="text-sm sm:text-base md:text-lg lg:text-xl absolute -top-0.5 sm:-top-1 left-1/2 transform -translate-x-1/2 filter drop-shadow-lg z-20">👑</span>
+            )}
+            {/* Visual hint for pieces that can capture */}
+            {canCapture && currentTurn === yourColor && !isSelected && (
+              <div className="absolute inset-0 border-2 border-blue-400 rounded-full animate-pulse opacity-75 pointer-events-none" />
+            )}
+          </div>
+        );
+      })()}
+      {/* Show little circle for legal moves */}
+      {isLegalMove && !piece && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 md:w-3 md:h-3 rounded-full bg-gray-600/60"></div>
+        </div>
+      )}
+    </div>
+  );
+}, (prevProps, nextProps) => {
+  // Custom comparison - only re-render if relevant props changed
+  return (
+    prevProps.piece === nextProps.piece &&
+    prevProps.isSelected === nextProps.isSelected &&
+    prevProps.isLegalMove === nextProps.isLegalMove &&
+    prevProps.isMandatoryCapture === nextProps.isMandatoryCapture &&
+    prevProps.isLastMoveSquare === nextProps.isLastMoveSquare &&
+    prevProps.isAnimatingFrom === nextProps.isAnimatingFrom &&
+    prevProps.isAnimatingTo === nextProps.isAnimatingTo &&
+    prevProps.canCapture === nextProps.canCapture &&
+    prevProps.isDragging === nextProps.isDragging &&
+    prevProps.colorClass === nextProps.colorClass &&
+    prevProps.currentTurn === nextProps.currentTurn &&
+    prevProps.yourColor === nextProps.yourColor &&
+    prevProps.draggingPiece?.boardIndex === nextProps.draggingPiece?.boardIndex &&
+    prevProps.hasDragged === nextProps.hasDragged
+  );
+});
+
+CheckersSquare.displayName = 'CheckersSquare';
 
 export const CheckersGame: React.FC<CheckersGameProps> = ({
   matchId: initialMatchId,
@@ -81,6 +221,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   const errorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const leaveCountdownRef = useRef<NodeJS.Timeout | null>(null);
   const moveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const dragFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
     const handleMoveAccepted = (message: ServerMessage) => {
@@ -366,6 +507,10 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       if (moveTimerRef.current) {
         clearInterval(moveTimerRef.current);
       }
+      // Cancel any pending drag animation frame
+      if (dragFrameRef.current !== null) {
+        cancelAnimationFrame(dragFrameRef.current);
+      }
     };
   }, [nickname]);
 
@@ -620,12 +765,33 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     return moves;
   }, [board, currentTurn]);
 
-  // Calculate all mandatory captures for current player
+  // Memoize legal moves cache for all pieces - recalculates only when board or turn changes
+  const legalMovesCache = useMemo(() => {
+    if (currentTurn !== yourColor) return new Map<number, number[]>();
+    
+    const cache = new Map<number, number[]>();
+    for (let i = 0; i < BOARD_SIZE * BOARD_SIZE; i++) {
+      const piece = board[i];
+      if (piece === null) continue;
+      
+      const pieceColor = (piece === 'r' || piece === 'R') ? 'red' : 'black';
+      if (pieceColor === currentTurn) {
+        cache.set(i, calculateLegalMoves(i));
+      }
+    }
+    return cache;
+  }, [board, currentTurn, yourColor, calculateLegalMoves]);
+
+  // Get cached legal moves for a position
+  const getCachedLegalMoves = useCallback((position: number): number[] => {
+    return legalMovesCache.get(position) || [];
+  }, [legalMovesCache]);
+
+  // Calculate all mandatory captures for current player (optimized with cache)
   const calculateAllMandatoryCaptures = useCallback((): number[] => {
     const allCaptures: number[] = [];
     
-    // First, check if any piece has captures available
-    let hasAnyCaptures = false;
+    // Use cached legal moves instead of recalculating
     for (let i = 0; i < BOARD_SIZE * BOARD_SIZE; i++) {
       const piece = board[i];
       if (piece === null) continue;
@@ -633,8 +799,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       const pieceColor = (piece === 'r' || piece === 'R') ? 'red' : 'black';
       if (pieceColor !== currentTurn) continue;
       
-      const moves = calculateLegalMoves(i);
-      // If calculateLegalMoves returns captures (mandatory), it means this piece has captures
+      const moves = getCachedLegalMoves(i);
       if (moves.length > 0) {
         // Check if these are captures by verifying they're 2+ squares away
         const { row: fromRow, col: fromCol } = indexToPos(i);
@@ -644,27 +809,34 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           const colDiff = Math.abs(toCol - fromCol);
           // Captures are at least 2 squares away
           if (rowDiff >= 2 && colDiff >= 2) {
-            hasAnyCaptures = true;
             allCaptures.push(moveIndex);
           }
         }
       }
     }
     
-    // If there are any captures, return all capture destinations
-    // Otherwise return empty (no mandatory captures)
-    return hasAnyCaptures ? allCaptures : [];
-  }, [board, currentTurn, calculateLegalMoves]);
+    return allCaptures;
+  }, [board, currentTurn, getCachedLegalMoves]);
+
+  // Calculate and update mandatory captures when board or turn changes
+  useEffect(() => {
+    if (currentTurn === yourColor && !winner) {
+      const captures = calculateAllMandatoryCaptures();
+      setMandatoryCaptures(captures);
+    } else {
+      setMandatoryCaptures([]);
+    }
+  }, [board, currentTurn, yourColor, winner, calculateAllMandatoryCaptures]);
 
   // Auto-select piece and calculate moves when canContinueJump becomes true
   useEffect(() => {
     if (canContinueJump && continueJumpFrom !== null && currentTurn === yourColor) {
       setSelectedSquare(continueJumpFrom);
-      const moves = calculateLegalMoves(continueJumpFrom);
+      const moves = getCachedLegalMoves(continueJumpFrom);
       setLegalMoves(moves);
       console.log('Auto-selected piece for continuing jump at', continueJumpFrom, 'with moves:', moves);
     }
-  }, [canContinueJump, continueJumpFrom, currentTurn, yourColor, calculateLegalMoves]);
+  }, [canContinueJump, continueJumpFrom, currentTurn, yourColor, getCachedLegalMoves]);
 
   // Get board-relative position from client coordinates
   const getBoardRelativePosition = useCallback((clientX: number, clientY: number): { x: number; y: number } | null => {
@@ -716,17 +888,24 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     setDragPosition(pos);
     setHasDragged(false);
     setSelectedSquare(index);
-    const moves = calculateLegalMoves(index);
+    const moves = getCachedLegalMoves(index);
     setLegalMoves(moves);
   }, [board, currentTurn, yourColor, winner, canContinueJump, continueJumpFrom, getBoardRelativePosition, calculateLegalMoves]);
 
-  // Handle drag move
+  // Handle drag move - optimized with requestAnimationFrame for smooth performance
   const handleDragMove = useCallback((clientX: number, clientY: number) => {
     if (!draggingPiece) return;
     setHasDragged(true); // Mark that we've moved
-    const pos = getBoardRelativePosition(clientX, clientY);
-    if (pos) {
-      setDragPosition(pos);
+    
+    // Use requestAnimationFrame to throttle updates for smoother performance
+    if (dragFrameRef.current === null) {
+      dragFrameRef.current = requestAnimationFrame(() => {
+        const pos = getBoardRelativePosition(clientX, clientY);
+        if (pos) {
+          setDragPosition(pos);
+        }
+        dragFrameRef.current = null;
+      });
     }
   }, [draggingPiece, getBoardRelativePosition]);
 
@@ -749,7 +928,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     if (!pos) {
       // If we can't get position, keep the piece selected with legal moves visible
       setSelectedSquare(currentDraggingPiece.boardIndex);
-      const moves = calculateLegalMoves(currentDraggingPiece.boardIndex);
+      const moves = getCachedLegalMoves(currentDraggingPiece.boardIndex);
       setLegalMoves(moves);
       return;
     }
@@ -759,7 +938,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     // If dropped on a different square, try to make the move
     if (dropIndex !== null && dropIndex !== currentDraggingPiece.boardIndex) {
       // Check if it's a valid move - ONLY update board if move is confirmed legal
-      const moves = calculateLegalMoves(currentDraggingPiece.boardIndex);
+      const moves = getCachedLegalMoves(currentDraggingPiece.boardIndex);
       if (moves.includes(dropIndex)) {
         // Only do optimistic update for confirmed legal moves
         const newBoard = [...board];
@@ -814,13 +993,13 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         setLegalMoves(moves);
         setMandatoryCaptures([]);
       }
-    } else {
-      // Dropped on same square or invalid position - keep piece selected with legal moves
-      setSelectedSquare(currentDraggingPiece.boardIndex);
-      const moves = calculateLegalMoves(currentDraggingPiece.boardIndex);
-      setLegalMoves(moves);
-    }
-  }, [draggingPiece, getBoardRelativePosition, getSquareFromPosition, calculateLegalMoves, matchId, calculateAllMandatoryCaptures]);
+      } else {
+        // Dropped on same square or invalid position - keep piece selected with legal moves
+        setSelectedSquare(currentDraggingPiece.boardIndex);
+        const moves = getCachedLegalMoves(currentDraggingPiece.boardIndex);
+        setLegalMoves(moves);
+      }
+  }, [draggingPiece, getBoardRelativePosition, getSquareFromPosition, getCachedLegalMoves, matchId, calculateAllMandatoryCaptures, board]);
 
   // Mouse event handlers for dragging
   useEffect(() => {
@@ -930,7 +1109,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     if (canContinueJump && continueJumpFrom !== null) {
       // If we have the piece selected and click on a legal move, make the move
       if (selectedSquare === continueJumpFrom) {
-        const moves = calculateLegalMoves(continueJumpFrom);
+        const moves = getCachedLegalMoves(continueJumpFrom);
         if (moves.includes(index)) {
           // This is a legal move, proceed to make it
           console.log('Making continued jump from', selectedSquare, 'to', index);
@@ -958,7 +1137,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       // If clicking on continueJumpFrom, select it
       if (index === continueJumpFrom) {
         setSelectedSquare(continueJumpFrom);
-        const moves = calculateLegalMoves(continueJumpFrom);
+        const moves = getCachedLegalMoves(continueJumpFrom);
         setLegalMoves(moves);
         console.log('Selected piece for continuing jump at', continueJumpFrom, 'with moves:', moves);
         return;
@@ -968,7 +1147,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         setError('You must continue your jump from the highlighted piece');
         // Auto-select the piece that must continue jumping
         setSelectedSquare(continueJumpFrom);
-        const moves = calculateLegalMoves(continueJumpFrom);
+        const moves = getCachedLegalMoves(continueJumpFrom);
         setLegalMoves(moves);
         return;
       }
@@ -978,8 +1157,8 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       if (isYourPiece) {
         console.log('Selecting piece at', index);
         setSelectedSquare(index);
-        // Calculate and display legal moves
-        const moves = calculateLegalMoves(index);
+        // Calculate and display legal moves (using cache)
+        const moves = getCachedLegalMoves(index);
         setLegalMoves(moves);
         console.log('Selected piece at', index, 'Legal moves:', moves);
         // No error message if no legal moves, just select the piece
@@ -994,7 +1173,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       } else if (isYourPiece) {
         // Select different piece
         setSelectedSquare(index);
-        const moves = calculateLegalMoves(index);
+        const moves = getCachedLegalMoves(index);
         setLegalMoves(moves);
       } else {
         // Try to move - check if it's a legal move
@@ -1064,7 +1243,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         }
       }
     }
-  }, [board, selectedSquare, yourColor, currentTurn, canContinueJump, continueJumpFrom, winner, matchId, legalMoves, calculateLegalMoves, calculateAllMandatoryCaptures]);
+  }, [board, selectedSquare, yourColor, currentTurn, canContinueJump, continueJumpFrom, winner, matchId, legalMoves, getCachedLegalMoves, calculateAllMandatoryCaptures]);
 
   const handleRematch = () => {
     // Use current matchId from state
@@ -1110,7 +1289,53 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     }
   }, [chatMessages]);
 
-  const renderSquare = (displayIndex: number) => {
+  // Calculate which pieces can capture (for visual hints)
+  const piecesWithCaptures = useMemo(() => {
+    if (currentTurn !== yourColor || winner) return new Set<number>();
+    
+    const pieces = new Set<number>();
+    for (let i = 0; i < BOARD_SIZE * BOARD_SIZE; i++) {
+      const piece = board[i];
+      if (piece === null) continue;
+      
+      const pieceColor = (piece === 'r' || piece === 'R') ? 'red' : 'black';
+      if (pieceColor === currentTurn) {
+        const moves = getCachedLegalMoves(i);
+        // Check if any move is a capture (2+ squares away)
+        for (const moveIndex of moves) {
+          const { row: fromRow, col: fromCol } = indexToPos(i);
+          const { row: toRow, col: toCol } = indexToPos(moveIndex);
+          const rowDiff = Math.abs(toRow - fromRow);
+          const colDiff = Math.abs(toCol - fromCol);
+          if (rowDiff >= 2 && colDiff >= 2) {
+            pieces.add(i);
+            break;
+          }
+        }
+      }
+    }
+    return pieces;
+  }, [board, currentTurn, yourColor, winner, getCachedLegalMoves]);
+
+  // Wrapper handlers for memoized square component
+  const handleSquareMouseDown = useCallback((e: React.MouseEvent, boardIndex: number) => {
+    handleDragStart(boardIndex, e.clientX, e.clientY);
+  }, [handleDragStart]);
+
+  const handleSquareTouchStart = useCallback((e: React.TouchEvent, boardIndex: number) => {
+    const touch = e.touches[0];
+    handleDragStart(boardIndex, touch.clientX, touch.clientY);
+  }, [handleDragStart]);
+
+  const handleSquareClickWrapper = useCallback((e: React.MouseEvent, boardIndex: number) => {
+    setDraggingPiece(null);
+    setDragPosition(null);
+    setHasDragged(false);
+    console.log('Square clicked - boardIndex:', boardIndex, 'Piece:', board[boardIndex], 'Selected:', selectedSquare, 'Legal moves:', legalMoves);
+    handleSquareClick(boardIndex);
+  }, [board, selectedSquare, legalMoves, handleSquareClick]);
+
+  const renderSquare = useCallback((displayIndex: number) => {
     // Convert display index to board index
     const boardIndex = displayIndexToBoardIndex(displayIndex);
     const piece = board[boardIndex];
@@ -1121,95 +1346,57 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     const isLastMoveSquare = lastMove !== null && (lastMove.from === boardIndex || lastMove.to === boardIndex);
     const isAnimatingFrom = animatingPiece !== null && animatingPiece.from === boardIndex;
     const isAnimatingTo = animatingPiece !== null && animatingPiece.to === boardIndex;
+    // Check if this piece can capture (for visual hint)
+    const canCapture = piecesWithCaptures.has(boardIndex);
     
-    // Debug log for mandatory captures
-    if (isMandatoryCapture) {
-      console.log('Rendering mandatory capture at displayIndex:', displayIndex, 'boardIndex:', boardIndex, 'mandatoryCaptures:', mandatoryCaptures);
-    }
     const colorClass = getSquareColor(boardIndex, isSelected, isLegalMove, isMandatoryCapture, isLastMoveSquare);
 
     const isDragging = draggingPiece?.boardIndex === boardIndex;
 
     return (
-      <div
+      <CheckersSquare
         key={displayIndex}
-        onMouseDown={(e) => {
-          if (piece && !draggingPiece && currentTurn === yourColor) {
-            const pieceColor = (piece === 'r' || piece === 'R') ? 'red' : 'black';
-            if (pieceColor === yourColor) {
-              // Start drag operation - will be cancelled if user doesn't drag
-              e.stopPropagation();
-              handleDragStart(boardIndex, e.clientX, e.clientY);
-            }
-          }
-        }}
-        onTouchStart={(e) => {
-          if (piece && !draggingPiece && e.touches.length > 0) {
-            e.preventDefault();
-            e.stopPropagation();
-            const touch = e.touches[0];
-            handleDragStart(boardIndex, touch.clientX, touch.clientY);
-          }
-        }}
-        onClick={(e) => {
-          // Handle click for selection - only if we didn't actually drag
-          // If hasDragged is false, it means it was just a click, not a drag
-          // Clear dragging state first to allow selection to work
-          if (!hasDragged) {
-            e.preventDefault();
-            e.stopPropagation();
-            // Clear dragging state if it was set by mousedown (click without drag)
-            setDraggingPiece(null);
-            setDragPosition(null);
-            setHasDragged(false);
-            console.log('Square clicked - displayIndex:', displayIndex, 'boardIndex:', boardIndex, 'Piece:', piece, 'Selected:', selectedSquare, 'Legal moves:', legalMoves);
-            // Convert display index back to board index for handling
-            handleSquareClick(boardIndex);
-          }
-        }}
-        className={`${colorClass} aspect-square flex items-center justify-center transition-all active:scale-95 sm:hover:scale-105 border-2 touch-manipulation ${
-          piece && !draggingPiece && currentTurn === yourColor && ((piece === 'r' || piece === 'R') ? 'red' : 'black') === yourColor
-            ? 'cursor-grab active:cursor-grabbing' 
-            : 'cursor-pointer'
-        } ${
-          isSelected ? 'border-yellow-400' : 
-          isMandatoryCapture ? 'border-blue-400' : 
-          isLastMoveSquare ? 'border-purple-400' : 
-          'border-transparent'
-        }`}
-        style={{ position: 'relative', zIndex: isAnimatingTo ? 9998 : isDragging ? 9999 : 1 }}
-      >
-        {piece && (() => {
-          const display = getPieceDisplay(piece);
-          // If this is animating (from or to), hide the piece (it's rendered as overlay)
-          if (isAnimatingFrom || isAnimatingTo) {
-            return null;
-          }
-          // If this piece is being dragged, hide it (it's rendered as overlay)
-          if (isDragging) {
-            return null;
-          }
-          
-          return (
-            <div 
-              className="relative flex items-center justify-center pointer-events-none select-none w-full h-full"
-            >
-              <span className="text-lg sm:text-xl md:text-2xl lg:text-3xl filter drop-shadow-lg relative z-10">{display.emoji}</span>
-              {display.isKing && (
-                <span className="text-sm sm:text-base md:text-lg lg:text-xl absolute -top-0.5 sm:-top-1 left-1/2 transform -translate-x-1/2 filter drop-shadow-lg z-20">👑</span>
-              )}
-            </div>
-          );
-        })()}
-        {/* Show little circle for legal moves */}
-        {isLegalMove && !piece && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 md:w-3 md:h-3 rounded-full bg-gray-600/60"></div>
-          </div>
-        )}
-      </div>
+        displayIndex={displayIndex}
+        boardIndex={boardIndex}
+        piece={piece}
+        isSelected={isSelected}
+        isLegalMove={isLegalMove}
+        isMandatoryCapture={isMandatoryCapture}
+        isLastMoveSquare={isLastMoveSquare}
+        isAnimatingFrom={isAnimatingFrom}
+        isAnimatingTo={isAnimatingTo}
+        canCapture={canCapture}
+        isDragging={isDragging}
+        colorClass={colorClass}
+        currentTurn={currentTurn}
+        yourColor={yourColor}
+        draggingPiece={draggingPiece}
+        hasDragged={hasDragged}
+        onMouseDown={handleSquareMouseDown}
+        onTouchStart={handleSquareTouchStart}
+        onClick={handleSquareClickWrapper}
+        getPieceDisplay={getPieceDisplay}
+      />
     );
-  };
+  }, [
+    board,
+    selectedSquare,
+    legalMoves,
+    mandatoryCaptures,
+    lastMove,
+    animatingPiece,
+    piecesWithCaptures,
+    draggingPiece,
+    currentTurn,
+    yourColor,
+    hasDragged,
+    handleSquareMouseDown,
+    handleSquareTouchStart,
+    handleSquareClick,
+    displayIndexToBoardIndex,
+    getSquareColor,
+    getPieceDisplay,
+  ]);
 
   // Determine opponent color
   const opponentColor = yourColor === 'red' ? 'black' : 'red';

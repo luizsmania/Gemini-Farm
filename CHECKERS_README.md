@@ -154,3 +154,4 @@ The database schema is automatically initialized when the server starts via `ini
 - Move animations
 - Sound effects
 
+
