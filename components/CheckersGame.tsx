@@ -758,10 +758,10 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     
     // If dropped on a different square, try to make the move
     if (dropIndex !== null && dropIndex !== currentDraggingPiece.boardIndex) {
-      // Check if it's a valid move
+      // Check if it's a valid move - ONLY update board if move is confirmed legal
       const moves = calculateLegalMoves(currentDraggingPiece.boardIndex);
       if (moves.includes(dropIndex)) {
-        // Optimistically update board instantly (chess.com style)
+        // Only do optimistic update for confirmed legal moves
         const newBoard = [...board];
         const piece = newBoard[currentDraggingPiece.boardIndex];
         newBoard[currentDraggingPiece.boardIndex] = null;
@@ -808,19 +808,11 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           moveTimeoutRef.current = null;
         }, 3000);
       } else {
-        // Invalid move - keep piece selected and show error
+        // Invalid move - keep piece selected and legal moves visible, no error message
+        // DO NOT update board - only update for legal moves
         setSelectedSquare(currentDraggingPiece.boardIndex);
         setLegalMoves(moves);
-        const allMandatoryCaptures = calculateAllMandatoryCaptures();
-        if (allMandatoryCaptures.length > 0) {
-          setError('Capture is mandatory! Select a piece that can capture (blue squares).');
-          setMandatoryCaptures(allMandatoryCaptures);
-          playSound('error');
-        } else {
-          setError(`Invalid move - select a highlighted square.`);
-          setMandatoryCaptures([]);
-          playSound('error');
-        }
+        setMandatoryCaptures([]);
       }
     } else {
       // Dropped on same square or invalid position - keep piece selected with legal moves
@@ -830,7 +822,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     }
   }, [draggingPiece, getBoardRelativePosition, getSquareFromPosition, calculateLegalMoves, matchId, calculateAllMandatoryCaptures]);
 
-  // Mouse event handlers
+  // Mouse event handlers for dragging
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (draggingPiece) {
@@ -841,8 +833,18 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
 
     const handleMouseUp = (e: MouseEvent) => {
       if (draggingPiece) {
-        e.preventDefault();
-        handleDragEnd(e.clientX, e.clientY);
+        if (hasDragged) {
+          // We actually dragged - handle drag end
+          e.preventDefault();
+          handleDragEnd(e.clientX, e.clientY);
+        } else {
+          // We didn't drag - it was just a click
+          // Clear dragging state to allow onClick to work
+          // Don't prevent default - let onClick fire
+          setDraggingPiece(null);
+          setDragPosition(null);
+          setHasDragged(false);
+        }
       }
     };
 
@@ -858,7 +860,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         document.removeEventListener('mouseup', handleMouseUp);
       };
     }
-  }, [draggingPiece, handleDragMove, handleDragEnd]);
+  }, [draggingPiece, handleDragMove, handleDragEnd, hasDragged]);
 
   // Touch event handlers
   useEffect(() => {
@@ -996,13 +998,15 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         setLegalMoves(moves);
       } else {
         // Try to move - check if it's a legal move
+        // ONLY update board if move is confirmed legal - no optimistic updates for illegal moves
         console.log('Attempting move - Selected:', selectedSquare, 'Target:', index, 'Legal moves:', legalMoves);
         if (legalMoves.length > 0 && legalMoves.includes(index)) {
+          // Move is legal - do optimistic update
           console.log('Making move from', selectedSquare, 'to', index);
           console.log('Socket connected?', checkersWebSocketService.isConnected());
           const fromSquare = selectedSquare; // Capture value for timeout check
           
-          // Optimistically update board instantly (chess.com style)
+          // Optimistically update board instantly (chess.com style) - ONLY for legal moves
           const newBoard = [...board];
           const piece = newBoard[selectedSquare];
           newBoard[selectedSquare] = null;
@@ -1130,10 +1134,13 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       <div
         key={displayIndex}
         onMouseDown={(e) => {
-          if (piece && !draggingPiece) {
-            e.preventDefault();
-            e.stopPropagation();
-            handleDragStart(boardIndex, e.clientX, e.clientY);
+          if (piece && !draggingPiece && currentTurn === yourColor) {
+            const pieceColor = (piece === 'r' || piece === 'R') ? 'red' : 'black';
+            if (pieceColor === yourColor) {
+              // Start drag operation - will be cancelled if user doesn't drag
+              e.stopPropagation();
+              handleDragStart(boardIndex, e.clientX, e.clientY);
+            }
           }
         }}
         onTouchStart={(e) => {
@@ -1145,11 +1152,16 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           }
         }}
         onClick={(e) => {
-          // Only handle click if not dragging (drag end handles the move)
-          // Also check if this was a drag operation (hasDragged will be set)
-          if (!draggingPiece && !hasDragged) {
+          // Handle click for selection - only if we didn't actually drag
+          // If hasDragged is false, it means it was just a click, not a drag
+          // Clear dragging state first to allow selection to work
+          if (!hasDragged) {
             e.preventDefault();
             e.stopPropagation();
+            // Clear dragging state if it was set by mousedown (click without drag)
+            setDraggingPiece(null);
+            setDragPosition(null);
+            setHasDragged(false);
             console.log('Square clicked - displayIndex:', displayIndex, 'boardIndex:', boardIndex, 'Piece:', piece, 'Selected:', selectedSquare, 'Legal moves:', legalMoves);
             // Convert display index back to board index for handling
             handleSquareClick(boardIndex);
