@@ -309,6 +309,26 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
             </div>
           </div>
 
+          <div className="mb-4 p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+            <h3 className="text-lg font-semibold text-white mb-2">Offline Practice</h3>
+            <p className="text-sm text-slate-400 mb-3">Play against AI without an internet connection</p>
+            <Button 
+              onClick={() => {
+                // Generate a unique match ID for offline games
+                const offlineMatchId = 'offline-' + Date.now();
+                // Create initial board
+                const { createInitialBoard } = require('../server/checkersEngine');
+                const initialBoard = createInitialBoard();
+                // Player always plays as red in offline mode
+                onGameStart(offlineMatchId, 'red', initialBoard);
+              }}
+              variant="secondary"
+              className="w-full sm:w-auto"
+            >
+              Start Offline Game
+            </Button>
+          </div>
+
           {error && (
             <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 text-sm">
               {error}

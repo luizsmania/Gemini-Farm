@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { checkersWebSocketService } from '../services/checkersWebSocketService';
+import { OfflineGameService } from '../services/offlineGameService';
 import { ServerMessage, Board, Piece, Color } from '../types/checkers';
 import { Button } from './Button';
 import { X } from 'lucide-react';
@@ -178,6 +179,24 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   nickname,
   onLeave,
 }) => {
+  const isOffline = initialMatchId.startsWith('offline-');
+  const offlineGameServiceRef = useRef<OfflineGameService | null>(null);
+  
+  // Initialize offline game service if in offline mode
+  useEffect(() => {
+    if (isOffline && !offlineGameServiceRef.current) {
+      offlineGameServiceRef.current = new OfflineGameService();
+      const initialState = offlineGameServiceRef.current.getState();
+      // Sync initial state with component state
+      setBoard(initialState.board);
+      setCurrentTurn(initialState.currentTurn);
+      setCapturesRed(initialState.capturesRed);
+      setCapturesBlack(initialState.capturesBlack);
+      setOpponentNickname('AI Opponent');
+      playSound('game-start');
+    }
+  }, [isOffline]);
+
   const [matchId, setMatchId] = useState<string>(initialMatchId);
   const [board, setBoard] = useState<Board>(initialBoard);
   const [currentTurn, setCurrentTurn] = useState<Color>('red');
@@ -475,24 +494,29 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       }
     };
 
-    checkersWebSocketService.on('MOVE_ACCEPTED', handleMoveAccepted);
-    checkersWebSocketService.on('MOVE_REJECTED', handleMoveRejected);
-    checkersWebSocketService.on('GAME_OVER', handleGameOver);
-    checkersWebSocketService.on('PLAYER_DISCONNECTED', handlePlayerDisconnected);
-    checkersWebSocketService.on('REMATCH_REQUEST', handleRematchRequest);
-    checkersWebSocketService.on('GAME_START', handleGameStart);
-    checkersWebSocketService.on('CHAT_MESSAGE', handleChatMessage);
-    checkersWebSocketService.on('MATCH_LEAVING', handleMatchLeaving);
+    // Only set up WebSocket listeners if not in offline mode
+    if (!isOffline) {
+      checkersWebSocketService.on('MOVE_ACCEPTED', handleMoveAccepted);
+      checkersWebSocketService.on('MOVE_REJECTED', handleMoveRejected);
+      checkersWebSocketService.on('GAME_OVER', handleGameOver);
+      checkersWebSocketService.on('PLAYER_DISCONNECTED', handlePlayerDisconnected);
+      checkersWebSocketService.on('REMATCH_REQUEST', handleRematchRequest);
+      checkersWebSocketService.on('GAME_START', handleGameStart);
+      checkersWebSocketService.on('CHAT_MESSAGE', handleChatMessage);
+      checkersWebSocketService.on('MATCH_LEAVING', handleMatchLeaving);
+    }
 
     return () => {
-      checkersWebSocketService.off('MOVE_ACCEPTED', handleMoveAccepted);
-      checkersWebSocketService.off('MOVE_REJECTED', handleMoveRejected);
-      checkersWebSocketService.off('GAME_OVER', handleGameOver);
-      checkersWebSocketService.off('PLAYER_DISCONNECTED', handlePlayerDisconnected);
-      checkersWebSocketService.off('REMATCH_REQUEST', handleRematchRequest);
-      checkersWebSocketService.off('GAME_START', handleGameStart);
-      checkersWebSocketService.off('CHAT_MESSAGE', handleChatMessage);
-      checkersWebSocketService.off('MATCH_LEAVING', handleMatchLeaving);
+      if (!isOffline) {
+        checkersWebSocketService.off('MOVE_ACCEPTED', handleMoveAccepted);
+        checkersWebSocketService.off('MOVE_REJECTED', handleMoveRejected);
+        checkersWebSocketService.off('GAME_OVER', handleGameOver);
+        checkersWebSocketService.off('PLAYER_DISCONNECTED', handlePlayerDisconnected);
+        checkersWebSocketService.off('REMATCH_REQUEST', handleRematchRequest);
+        checkersWebSocketService.off('GAME_START', handleGameStart);
+        checkersWebSocketService.off('CHAT_MESSAGE', handleChatMessage);
+        checkersWebSocketService.off('MATCH_LEAVING', handleMatchLeaving);
+      }
       // Clear leave countdown on unmount
       if (leaveCountdownRef.current) {
         clearInterval(leaveCountdownRef.current);
@@ -512,7 +536,68 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         cancelAnimationFrame(dragFrameRef.current);
       }
     };
-  }, [nickname]);
+  }, [nickname, isOffline]);
+
+  // Offline move handler
+  const handleOfflineMove = useCallback((from: number, to: number, isAIMove: boolean = false) => {
+    if (!offlineGameServiceRef.current) return;
+
+    const result = offlineGameServiceRef.current.makeMove(from, to);
+    
+    if (!result.success) {
+      setError(result.error || 'Invalid move');
+      // Revert optimistic update if pending (only for player moves, not AI)
+      if (pendingMove && !isAIMove) {
+        setBoard(pendingMove.board);
+        setPendingMove(null);
+      }
+      return;
+    }
+
+    // Update state from offline service
+    const newState = offlineGameServiceRef.current.getState();
+    setBoard(newState.board);
+    setCurrentTurn(newState.currentTurn);
+    setCanContinueJump(newState.canContinueJump);
+    setContinueJumpFrom(newState.continueJumpFrom);
+    setCapturesRed(newState.capturesRed);
+    setCapturesBlack(newState.capturesBlack);
+    setPendingMove(null);
+    setLegalMoves([]);
+    setSelectedSquare(null);
+    setError(null);
+    
+    if (isAIMove) {
+      playSound('move-opponent');
+      setLastMove({ from, to });
+    } else {
+      playSound('move-self');
+    }
+
+    // Check if game over
+    if (result.gameOver && newState.winner) {
+      setWinner(newState.winner);
+      playSound('game-end');
+      setShowRematch(true);
+      return;
+    }
+
+    // If it's now AI's turn and not continuing a jump, trigger AI move
+    if (newState.currentTurn !== yourColor && !newState.canContinueJump && !isAIMove) {
+      setTimeout(() => {
+        if (!offlineGameServiceRef.current) return;
+        const aiMove = offlineGameServiceRef.current.makeAIMove();
+        if (aiMove) {
+          // Animate AI move
+          setAnimatingPiece({ from: aiMove.from, to: aiMove.to });
+          setTimeout(() => {
+            setAnimatingPiece(null);
+            handleOfflineMove(aiMove.from, aiMove.to, true);
+          }, 300);
+        }
+      }, 500); // Small delay for AI "thinking"
+    }
+  }, [yourColor]);
 
   // Move timer countdown
   useEffect(() => {
@@ -960,32 +1045,38 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         // Update board instantly (no animation for user's own moves)
         setBoard(newBoard);
         
-        // Send move to server with 50ms delay for smooth feel
-        setTimeout(() => {
-          checkersWebSocketService.makeMove(matchId, currentDraggingPiece.boardIndex, dropIndex);
-        }, 50);
-        
-        setError(null);
-        setMandatoryCaptures([]);
-        // Clear legal moves immediately after making a move
-        setLegalMoves([]);
-        setSelectedSquare(null);
-        
-        // Clear any existing timeout
-        if (moveTimeoutRef.current) {
-          clearTimeout(moveTimeoutRef.current);
+        // Send move to server or handle offline
+        if (isOffline && offlineGameServiceRef.current) {
+          setTimeout(() => {
+            handleOfflineMove(currentDraggingPiece.boardIndex, dropIndex);
+          }, 50);
+        } else {
+          setTimeout(() => {
+            checkersWebSocketService.makeMove(matchId, currentDraggingPiece.boardIndex, dropIndex);
+          }, 50);
+          
+          setError(null);
+          setMandatoryCaptures([]);
+          // Clear legal moves immediately after making a move
+          setLegalMoves([]);
+          setSelectedSquare(null);
+          
+          // Clear any existing timeout
+          if (moveTimeoutRef.current) {
+            clearTimeout(moveTimeoutRef.current);
+          }
+          // Set a timeout to show error if no response
+          moveTimeoutRef.current = setTimeout(() => {
+            setSelectedSquare(current => {
+              if (current === currentDraggingPiece.boardIndex) {
+                console.warn('No response from server after 3 seconds');
+                setError('No response from server. Check connection.');
+              }
+              return current;
+            });
+            moveTimeoutRef.current = null;
+          }, 3000);
         }
-        // Set a timeout to show error if no response
-        moveTimeoutRef.current = setTimeout(() => {
-          setSelectedSquare(current => {
-            if (current === currentDraggingPiece.boardIndex) {
-              console.warn('No response from server after 3 seconds');
-              setError('No response from server. Check connection.');
-            }
-            return current;
-          });
-          moveTimeoutRef.current = null;
-        }, 3000);
       } else {
         // Invalid move - keep piece selected and legal moves visible, no error message
         // DO NOT update board - only update for legal moves
@@ -1113,24 +1204,28 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         if (moves.includes(index)) {
           // This is a legal move, proceed to make it
           console.log('Making continued jump from', selectedSquare, 'to', index);
-          checkersWebSocketService.makeMove(matchId, selectedSquare, index);
-          setError(null);
-          setMandatoryCaptures([]);
-          // Clear any existing timeout
-          if (moveTimeoutRef.current) {
-            clearTimeout(moveTimeoutRef.current);
+          if (isOffline && offlineGameServiceRef.current) {
+            handleOfflineMove(selectedSquare, index);
+          } else {
+            checkersWebSocketService.makeMove(matchId, selectedSquare, index);
+            setError(null);
+            setMandatoryCaptures([]);
+            // Clear any existing timeout
+            if (moveTimeoutRef.current) {
+              clearTimeout(moveTimeoutRef.current);
+            }
+            // Set a timeout to show error if no response
+            moveTimeoutRef.current = setTimeout(() => {
+              setSelectedSquare(current => {
+                if (current === selectedSquare) {
+                  console.warn('No response from server after 3 seconds');
+                  setError('No response from server. Check connection.');
+                }
+                return current;
+              });
+              moveTimeoutRef.current = null;
+            }, 3000);
           }
-          // Set a timeout to show error if no response
-          moveTimeoutRef.current = setTimeout(() => {
-            setSelectedSquare(current => {
-              if (current === selectedSquare) {
-                console.warn('No response from server after 3 seconds');
-                setError('No response from server. Check connection.');
-              }
-              return current;
-            });
-            moveTimeoutRef.current = null;
-          }, 3000);
           return;
         }
       }
@@ -1205,29 +1300,33 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           // Update board instantly (no animation for user's own moves)
           setBoard(newBoard);
           
-          // Send move to server
-          checkersWebSocketService.makeMove(matchId, selectedSquare, index);
-          setError(null);
-          setMandatoryCaptures([]);
-          // Clear legal moves immediately after making a move
-          setLegalMoves([]);
-          setSelectedSquare(null);
-          // Clear any existing timeout
-          if (moveTimeoutRef.current) {
-            clearTimeout(moveTimeoutRef.current);
+          // Send move to server or handle offline
+          if (isOffline && offlineGameServiceRef.current) {
+            handleOfflineMove(selectedSquare, index);
+          } else {
+            checkersWebSocketService.makeMove(matchId, selectedSquare, index);
+            setError(null);
+            setMandatoryCaptures([]);
+            // Clear legal moves immediately after making a move
+            setLegalMoves([]);
+            setSelectedSquare(null);
+            // Clear any existing timeout
+            if (moveTimeoutRef.current) {
+              clearTimeout(moveTimeoutRef.current);
+            }
+            // Set a timeout to show error if no response
+            moveTimeoutRef.current = setTimeout(() => {
+              // Check if the square is still selected (move wasn't processed)
+              setSelectedSquare(current => {
+                if (current === fromSquare) {
+                  console.warn('No response from server after 3 seconds');
+                  setError('No response from server. Check connection.');
+                }
+                return current;
+              });
+              moveTimeoutRef.current = null;
+            }, 3000);
           }
-          // Set a timeout to show error if no response
-          moveTimeoutRef.current = setTimeout(() => {
-            // Check if the square is still selected (move wasn't processed)
-            setSelectedSquare(current => {
-              if (current === fromSquare) {
-                console.warn('No response from server after 3 seconds');
-                setError('No response from server. Check connection.');
-              }
-              return current;
-            });
-            moveTimeoutRef.current = null;
-          }, 3000);
         } else if (legalMoves.length === 0) {
           console.log('No legal moves available');
           // Just clear selection, no error message
