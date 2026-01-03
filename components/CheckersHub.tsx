@@ -3,6 +3,7 @@ import { checkersWebSocketService } from '../services/checkersWebSocketService';
 import { ServerMessage, LobbyInfo } from '../types/checkers';
 import { Button } from './Button';
 import { Loader2, X } from 'lucide-react';
+import { createInitialBoard } from '../server/checkersEngine';
 
 interface CheckersHubProps {
   onNicknameSet: (nickname: string, playerId: string) => void;
@@ -317,7 +318,6 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
                 // Generate a unique match ID for offline games
                 const offlineMatchId = 'offline-' + Date.now();
                 // Create initial board
-                const { createInitialBoard } = require('../server/checkersEngine');
                 const initialBoard = createInitialBoard();
                 // Player always plays as red in offline mode
                 onGameStart(offlineMatchId, 'red', initialBoard);
