@@ -1,4 +1,6 @@
 import { sql } from '@vercel/postgres';
+import { logDatabaseOperation } from '../utils/logger.js';
+import logger from '../utils/logger.js';
 
 // Database schema initialization
 export async function initDatabase() {
@@ -53,9 +55,9 @@ export async function initDatabase() {
       CREATE INDEX IF NOT EXISTS idx_moves_match_id ON moves(match_id)
     `;
 
-    console.log('Database initialized successfully');
+    logger.info('Database initialized successfully');
   } catch (error) {
-    console.error('Error initializing database:', error);
+    logger.error('Error initializing database:', error);
     throw error;
   }
 }
@@ -101,7 +103,7 @@ export async function createPlayer(nickname: string): Promise<Player> {
       createdAt: row.created_at,
     };
   } catch (error) {
-    console.error('Error creating player:', error);
+    logger.error('Error creating player', { error: error instanceof Error ? error.message : String(error), nickname });
     throw error;
   }
 }
@@ -125,7 +127,7 @@ export async function getPlayerById(id: string): Promise<Player | null> {
       createdAt: row.created_at,
     };
   } catch (error) {
-    console.error('Error getting player:', error);
+    logger.error('Error getting player', { error: error instanceof Error ? error.message : String(error), playerId: id });
     throw error;
   }
 }
@@ -148,7 +150,7 @@ export async function createMatch(playerRed: string, playerBlack: string): Promi
       createdAt: row.created_at,
     };
   } catch (error) {
-    console.error('Error creating match:', error);
+    logger.error('Error creating match', { error: error instanceof Error ? error.message : String(error), playerRed, playerBlack });
     throw error;
   }
 }
@@ -161,7 +163,7 @@ export async function finishMatch(matchId: string, winnerId: string): Promise<vo
       WHERE id = ${matchId}
     `;
   } catch (error) {
-    console.error('Error finishing match:', error);
+    logger.error('Error finishing match', { error: error instanceof Error ? error.message : String(error), matchId, winnerId });
     throw error;
   }
 }
@@ -184,8 +186,22 @@ export async function addMove(matchId: string, moveNumber: number, fromPos: numb
       createdAt: row.created_at,
     };
   } catch (error) {
-    console.error('Error adding move:', error);
+    logger.error('Error adding move', { error: error instanceof Error ? error.message : String(error), matchId, moveNumber, fromPos, toPos });
     throw error;
+  }
+}
+
+/**
+ * Check database health by performing a simple query
+ * @returns true if database is healthy, false otherwise
+ */
+export async function checkDatabaseHealth(): Promise<boolean> {
+  try {
+    await sql`SELECT 1`;
+    return true;
+  } catch (error) {
+    logger.error('Database health check failed', { error: error instanceof Error ? error.message : String(error) });
+    return false;
   }
 }
 
@@ -198,7 +214,7 @@ export async function getMatchHistory(playerId: string): Promise<Array<{
   finishedAt: Date | null;
 }>> {
   try {
-    console.log('[getMatchHistory] Querying for playerId:', playerId);
+    logDatabaseOperation('getMatchHistory', { playerId });
     
     const result = await sql`
       SELECT 
@@ -229,7 +245,7 @@ export async function getMatchHistory(playerId: string): Promise<Array<{
       LIMIT 50
     `;
 
-    console.log('[getMatchHistory] Query returned', result.rows.length, 'rows');
+    logDatabaseOperation('getMatchHistory - query returned', { playerId, count: result.rows.length });
 
     return result.rows.map(row => ({
       id: row.id,
@@ -240,9 +256,7 @@ export async function getMatchHistory(playerId: string): Promise<Array<{
       finishedAt: row.finished_at,
     }));
   } catch (error: any) {
-    console.error('[getMatchHistory] Error getting match history:', error);
-    console.error('[getMatchHistory] Error message:', error.message);
-    console.error('[getMatchHistory] Error code:', error.code);
+    logger.error('[getMatchHistory] Error getting match history', { playerId, error: error.message, code: error.code });
     throw error;
   }
 }

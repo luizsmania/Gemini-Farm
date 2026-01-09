@@ -99,11 +99,8 @@ const CheckersSquare = React.memo<CheckersSquareProps>(({
         }
       }}
       onClick={(e) => {
-        if (!hasDragged) {
-          e.preventDefault();
-          e.stopPropagation();
-          onClick(e, boardIndex);
-        }
+        // Always allow clicks - drag handlers will check if we actually dragged
+        onClick(e, boardIndex);
       }}
       className={`${colorClass} aspect-square flex items-center justify-center transition-all active:scale-95 sm:hover:scale-105 border-2 touch-manipulation ${
         piece && !draggingPiece && currentTurn === yourColor && ((piece === 'r' || piece === 'R') ? 'red' : 'black') === yourColor
@@ -181,6 +178,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
 }) => {
   const isOffline = initialMatchId.startsWith('offline-');
   const offlineGameServiceRef = useRef<OfflineGameService | null>(null);
+  const handleOfflineMoveRef = useRef<((from: number, to: number, isAIMove?: boolean) => void) | null>(null);
   
   // Initialize offline game service if in offline mode
   useEffect(() => {
@@ -232,6 +230,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   const [moveTimeRemaining, setMoveTimeRemaining] = useState<number>(45);
   const [draggingPiece, setDraggingPiece] = useState<{ boardIndex: number; piece: Piece } | null>(null);
   const [dragPosition, setDragPosition] = useState<{ x: number; y: number } | null>(null);
+  const [dragStartPosition, setDragStartPosition] = useState<{ x: number; y: number } | null>(null);
   const [hasDragged, setHasDragged] = useState(false);
   const [pendingMove, setPendingMove] = useState<{ from: number; to: number; board: Board } | null>(null);
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
@@ -592,12 +591,39 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           setAnimatingPiece({ from: aiMove.from, to: aiMove.to });
           setTimeout(() => {
             setAnimatingPiece(null);
-            handleOfflineMove(aiMove.from, aiMove.to, true);
+            // Use the ref to get the latest handler and avoid stale closure
+            if (handleOfflineMoveRef.current) {
+              handleOfflineMoveRef.current(aiMove.from, aiMove.to, true);
+            }
           }, 300);
         }
       }, 500); // Small delay for AI "thinking"
     }
+    
+    // If AI just moved and can continue jumping, trigger another AI move
+    if (isAIMove && newState.canContinueJump && newState.continueJumpFrom !== null) {
+      setTimeout(() => {
+        if (!offlineGameServiceRef.current) return;
+        const aiMove = offlineGameServiceRef.current.makeAIMove();
+        if (aiMove) {
+          // Animate AI move
+          setAnimatingPiece({ from: aiMove.from, to: aiMove.to });
+          setTimeout(() => {
+            setAnimatingPiece(null);
+            // Use the ref to get the latest handler
+            if (handleOfflineMoveRef.current) {
+              handleOfflineMoveRef.current(aiMove.from, aiMove.to, true);
+            }
+          }, 300);
+        }
+      }, 500);
+    }
   }, [yourColor]);
+  
+  // Keep the ref updated with the latest handler
+  useEffect(() => {
+    handleOfflineMoveRef.current = handleOfflineMove;
+  }, [handleOfflineMove]);
 
   // Move timer countdown
   useEffect(() => {
@@ -876,6 +902,16 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   const calculateAllMandatoryCaptures = useCallback((): number[] => {
     const allCaptures: number[] = [];
     
+    // If must continue jump, only show captures from the continuing piece
+    if (canContinueJump && continueJumpFrom !== null) {
+      const moves = getCachedLegalMoves(continueJumpFrom);
+      if (moves.length > 0) {
+        // All moves from a piece that must continue jumping are captures
+        allCaptures.push(...moves);
+      }
+      return allCaptures;
+    }
+    
     // Use cached legal moves instead of recalculating
     for (let i = 0; i < BOARD_SIZE * BOARD_SIZE; i++) {
       const piece = board[i];
@@ -901,7 +937,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     }
     
     return allCaptures;
-  }, [board, currentTurn, getCachedLegalMoves]);
+  }, [board, currentTurn, getCachedLegalMoves, canContinueJump, continueJumpFrom]);
 
   // Calculate and update mandatory captures when board or turn changes
   useEffect(() => {
@@ -911,7 +947,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     } else {
       setMandatoryCaptures([]);
     }
-  }, [board, currentTurn, yourColor, winner, calculateAllMandatoryCaptures]);
+  }, [board, currentTurn, yourColor, winner, canContinueJump, continueJumpFrom, calculateAllMandatoryCaptures]);
 
   // Auto-select piece and calculate moves when canContinueJump becomes true
   useEffect(() => {
@@ -969,18 +1005,32 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     const pos = getBoardRelativePosition(clientX, clientY);
     if (!pos) return;
 
-    setDraggingPiece({ boardIndex: index, piece });
-    setDragPosition(pos);
-    setHasDragged(false);
+    // For click-to-select: immediately select the piece and show legal moves
+    // This makes click interaction work even if drag doesn't happen
     setSelectedSquare(index);
     const moves = getCachedLegalMoves(index);
     setLegalMoves(moves);
+    console.log('Selected piece at', index, 'Legal moves:', moves);
+
+    setDraggingPiece({ boardIndex: index, piece });
+    setDragPosition(pos);
+    setDragStartPosition({ x: clientX, y: clientY }); // Store initial mouse position
+    setHasDragged(false);
   }, [board, currentTurn, yourColor, winner, canContinueJump, continueJumpFrom, getBoardRelativePosition, calculateLegalMoves]);
 
   // Handle drag move - optimized with requestAnimationFrame for smooth performance
   const handleDragMove = useCallback((clientX: number, clientY: number) => {
     if (!draggingPiece) return;
-    setHasDragged(true); // Mark that we've moved
+    
+    // Only mark as dragged if we've moved a significant distance (10px threshold)
+    // This allows clicks to work even with tiny mouse movements
+    if (!hasDragged && dragStartPosition) {
+      const dx = Math.abs(clientX - dragStartPosition.x);
+      const dy = Math.abs(clientY - dragStartPosition.y);
+      if (dx > 10 || dy > 10) {
+        setHasDragged(true); // Mark that we've moved significantly
+      }
+    }
     
     // Use requestAnimationFrame to throttle updates for smoother performance
     if (dragFrameRef.current === null) {
@@ -992,7 +1042,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         dragFrameRef.current = null;
       });
     }
-  }, [draggingPiece, getBoardRelativePosition]);
+  }, [draggingPiece, dragStartPosition, hasDragged, getBoardRelativePosition]);
 
   // Handle drag end
   const handleDragEnd = useCallback((clientX: number, clientY: number) => {
@@ -1007,6 +1057,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     
     setDraggingPiece(null);
     setDragPosition(null);
+    setDragStartPosition(null);
     setHasDragged(false);
 
     const pos = getBoardRelativePosition(clientX, clientY);
@@ -1106,14 +1157,17 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         if (hasDragged) {
           // We actually dragged - handle drag end
           e.preventDefault();
+          e.stopPropagation();
           handleDragEnd(e.clientX, e.clientY);
         } else {
           // We didn't drag - it was just a click
-          // Clear dragging state to allow onClick to work
+          // Clear dragging state immediately to allow onClick to work
           // Don't prevent default - let onClick fire
           setDraggingPiece(null);
           setDragPosition(null);
+          setDragStartPosition(null);
           setHasDragged(false);
+          // Don't prevent default or stop propagation - let the click event fire
         }
       }
     };
@@ -1227,6 +1281,10 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
             }, 3000);
           }
           return;
+        } else {
+          // Invalid move - must continue jumping
+          setError('You must continue your jump');
+          return;
         }
       }
       // If clicking on continueJumpFrom, select it
@@ -1237,8 +1295,8 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         console.log('Selected piece for continuing jump at', continueJumpFrom, 'with moves:', moves);
         return;
       }
-      // If we don't have the piece selected and click elsewhere, show error
-      if (selectedSquare !== continueJumpFrom) {
+      // If clicking on a different piece, show error and auto-select the continuing piece
+      if (isYourPiece && index !== continueJumpFrom) {
         setError('You must continue your jump from the highlighted piece');
         // Auto-select the piece that must continue jumping
         setSelectedSquare(continueJumpFrom);
@@ -1246,6 +1304,9 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         setLegalMoves(moves);
         return;
       }
+      // If clicking on empty square or opponent piece, show error
+      setError('You must continue your jump from the highlighted piece');
+      return;
     }
 
     if (selectedSquare === null) {
@@ -1427,12 +1488,20 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   }, [handleDragStart]);
 
   const handleSquareClickWrapper = useCallback((e: React.MouseEvent, boardIndex: number) => {
+    // If we actually dragged, don't process as click - drag handler already processed it
+    if (hasDragged) {
+      return;
+    }
+    
+    // Clear dragging state to ensure clean state
     setDraggingPiece(null);
     setDragPosition(null);
+    setDragStartPosition(null);
     setHasDragged(false);
+    
     console.log('Square clicked - boardIndex:', boardIndex, 'Piece:', board[boardIndex], 'Selected:', selectedSquare, 'Legal moves:', legalMoves);
     handleSquareClick(boardIndex);
-  }, [board, selectedSquare, legalMoves, handleSquareClick]);
+  }, [board, selectedSquare, legalMoves, hasDragged, handleSquareClick]);
 
   const renderSquare = useCallback((displayIndex: number) => {
     // Convert display index to board index

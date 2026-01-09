@@ -12,33 +12,77 @@
 import { Server } from 'socket.io';
 import http from 'http';
 import { createInitialBoard, validateMove, applyMove, canContinueJump, checkGameOver } from './server/checkersEngine.js';
-import { initDatabase, createMatch, finishMatch, addMove, getPlayerById, createPlayer, getMatchHistory } from './api/database.js';
+import { initDatabase, createMatch, finishMatch, addMove, getPlayerById, createPlayer, getMatchHistory, checkDatabaseHealth } from './api/database.js';
 import { GameState, Lobby, ClientMessage, ServerMessage } from './types/checkers.js';
+import { isValidUUID, isValidBoardPosition, sanitizeNickname, isValidNickname, sanitizeText, isValidMatchId } from './utils/validation.js';
+import { rateLimitMove, rateLimitChat, rateLimitLobby, rateLimitNickname } from './middleware/rateLimiter.js';
+import DOMPurify from 'isomorphic-dompurify';
+import logger, { logGameEvent, logSocketEvent, logSecurityEvent } from './utils/logger.js';
 
 // Create HTTP server
 const httpServer = http.createServer();
 
 // Configure CORS for production
 const getCorsOrigin = () => {
-  // In production, allow specific origins
-  if (process.env.CLIENT_URL) {
-    return process.env.CLIENT_URL;
-  }
-  if (process.env.VITE_CLIENT_URL) {
-    return process.env.VITE_CLIENT_URL;
-  }
-  // Allow all origins in development
+  // Development: allow localhost
   if (process.env.NODE_ENV === 'development') {
-    return '*';
+    return process.env.CLIENT_URL || 'http://localhost:3000';
   }
-  // In production without CLIENT_URL, allow common Vercel patterns
-  return true; // Allow all origins (Socket.IO will check origin automatically)
+  
+  // Production: MUST specify allowed origins
+  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',').map(s => s.trim()) || [];
+  
+  if (allowedOrigins.length === 0) {
+    logger.error('ERROR: ALLOWED_ORIGINS must be set in production!');
+    logger.error('Set ALLOWED_ORIGINS=https://yourdomain.com,https://www.yourdomain.com');
+    // Fail fast in production
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('ALLOWED_ORIGINS environment variable is required in production');
+    }
+    // Development fallback
+    return 'http://localhost:3000';
+  }
+  
+  return allowedOrigins;
+};
+
+// Get allowed origins for CORS validation
+const getAllowedOrigins = () => {
+  const origin = getCorsOrigin();
+  if (typeof origin === 'string') {
+    return [origin];
+  }
+  if (Array.isArray(origin)) {
+    return origin;
+  }
+  return ['http://localhost:3000']; // Fallback
 };
 
 // Create Socket.IO server
 const io = new Server(httpServer, {
   cors: {
-    origin: getCorsOrigin(),
+    origin: (origin, callback) => {
+      const allowed = getAllowedOrigins();
+      
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) {
+        // In development, allow
+        if (process.env.NODE_ENV === 'development') {
+          callback(null, true);
+          return;
+        }
+        // In production, reject if origin required
+        callback(new Error('Origin required'));
+        return;
+      }
+      
+      if (allowed.includes(origin)) {
+        callback(null, true);
+      } else {
+        logSecurityEvent('CORS rejected', origin || 'unknown', { allowed: allowed.join(', ') });
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     methods: ['GET', 'POST'],
     credentials: true,
     allowedHeaders: ['Content-Type'],
@@ -58,6 +102,34 @@ const playerLeaveTimers = new Map<string, NodeJS.Timeout>(); // playerId -> leav
 const leavingPlayers = new Map<string, string>(); // playerId -> matchId (players who clicked leave but have 30s grace period)
 const moveTimers = new Map<string, NodeJS.Timeout>(); // matchId -> move timer (45 seconds per move)
 
+// Cleanup utility functions
+function cleanupPlayerTimers(playerId: string) {
+  // Disconnect timer
+  const disconnectTimer = playerDisconnectTimers.get(playerId);
+  if (disconnectTimer) {
+    clearTimeout(disconnectTimer);
+    playerDisconnectTimers.delete(playerId);
+  }
+  
+  // Leave timer
+  const leaveTimer = playerLeaveTimers.get(playerId);
+  if (leaveTimer) {
+    clearTimeout(leaveTimer);
+    playerLeaveTimers.delete(playerId);
+  }
+  
+  // Remove from leaving players
+  leavingPlayers.delete(playerId);
+}
+
+function cleanupGameTimers(matchId: string) {
+  const moveTimer = moveTimers.get(matchId);
+  if (moveTimer) {
+    clearTimeout(moveTimer);
+    moveTimers.delete(matchId);
+  }
+}
+
 // Clean up lobby after a delay (in case of errors)
 function cleanupLobby(lobbyId: string) {
   setTimeout(() => {
@@ -76,7 +148,9 @@ function broadcastLobbyList(playerId?: string) {
   const lobbyList = Array.from(lobbies.values())
     .filter(lobby => lobby.players.length < lobby.maxPlayers)
     .map(lobby => {
-      const creatorNickname = lobby.creatorId ? (playerNicknames.get(lobby.creatorId) || 'Unknown') : 'Unknown';
+      const creatorNickname = lobby.creatorId 
+        ? sanitizeText(playerNicknames.get(lobby.creatorId) || 'Unknown', 20)
+        : 'Unknown';
       const isYourLobby = playerId ? (lobby.creatorId === playerId) : false;
       return {
         id: lobby.id,
@@ -94,7 +168,7 @@ function broadcastLobbyList(playerId?: string) {
       const game = activeGames.get(leavingMatchId);
       if (game) {
         const opponentId = playerId === game.playerRed ? game.playerBlack : game.playerRed;
-        const opponentNickname = playerNicknames.get(opponentId) || 'Opponent';
+        const opponentNickname = sanitizeText(playerNicknames.get(opponentId) || 'Opponent', 20);
         lobbyList.unshift({
           id: leavingMatchId,
           playerCount: 1, // Player is leaving, so only opponent remains
@@ -135,10 +209,10 @@ async function startGame(lobby: Lobby) {
       match = await createMatch(playerRed, playerBlack);
       matchId = match.id;
     } catch (dbError: any) {
-      console.error('Database error creating match:', dbError);
+      logger.error('Database error creating match', { error: dbError instanceof Error ? dbError.message : String(dbError), playerRed, playerBlack });
       // If database fails, use lobby ID as match ID
       matchId = lobby.id;
-      console.warn(`Using lobby ID as match ID: ${matchId}`);
+      logger.warn('Using lobby ID as match ID', { matchId });
     }
     
     const board = createInitialBoard();
@@ -157,7 +231,7 @@ async function startGame(lobby: Lobby) {
       capturesBlack: 0,
       moveTimerStart: Date.now(),
     };
-    console.log(`[GAME_START] Initialized game ${matchId} with captures: Red=0, Black=0`);
+    logGameEvent('Game started', matchId, { playerRed, playerBlack, capturesRed: 0, capturesBlack: 0 });
     
     activeGames.set(matchId, gameState);
     playerToGame.set(playerRed, matchId);
@@ -174,9 +248,9 @@ async function startGame(lobby: Lobby) {
     io.to(`player:${playerRed}`).socketsJoin(`match:${matchId}`);
     io.to(`player:${playerBlack}`).socketsJoin(`match:${matchId}`);
     
-    // Get opponent nicknames
-    const playerRedNickname = playerNicknames.get(playerRed) || 'Player 1';
-    const playerBlackNickname = playerNicknames.get(playerBlack) || 'Player 2';
+    // Get opponent nicknames (sanitized)
+    const playerRedNickname = sanitizeText(playerNicknames.get(playerRed) || 'Player 1', 20);
+    const playerBlackNickname = sanitizeText(playerNicknames.get(playerBlack) || 'Player 2', 20);
     
     // Notify players
     io.to(`player:${playerRed}`).emit('GAME_START', {
@@ -201,28 +275,34 @@ async function startGame(lobby: Lobby) {
       moveTimeRemaining: 45,
     } as ServerMessage);
     
-    console.log(`Game started: ${matchId}, Red: ${playerRed}, Black: ${playerBlack}`);
+    logGameEvent('Game started', matchId, { playerRed, playerBlack });
   } catch (error) {
-    console.error('Error starting game:', error);
+    logger.error('Error starting game', { error: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack : undefined });
   }
 }
 
 // Handle player disconnect
 function handleDisconnect(playerId: string) {
   const matchId = playerToGame.get(playerId);
-  if (!matchId) return;
+  if (!matchId) {
+    cleanupPlayerTimers(playerId);
+    return;
+  }
   
   const game = activeGames.get(matchId);
-  if (!game || game.winner !== null) return; // Game already ended
+  if (!game || game.winner !== null) {
+    cleanupPlayerTimers(playerId);
+    return; // Game already ended
+  }
   
   // Check if there's already a disconnect timer running
   if (playerDisconnectTimers.has(playerId)) {
-    console.log(`Player ${playerId} already has a disconnect timer, not starting a new one`);
+    logger.debug('Player already has disconnect timer', { playerId });
     return;
   }
   
   // Set 30 second timer
-  console.log(`Player ${playerId} disconnected, starting 30s forfeit timer`);
+  logger.info('Player disconnected, starting 30s forfeit timer', { playerId });
   
   const timer = setTimeout(async () => {
     // Forfeit game
@@ -234,7 +314,7 @@ function handleDisconnect(playerId: string) {
     try {
       await finishMatch(matchId, winnerId);
     } catch (error) {
-      console.error('Error finishing match:', error);
+      logger.error('Error finishing match (timeout)', { error: error instanceof Error ? error.message : String(error), matchId, winnerId });
     }
     
     // Notify players
@@ -243,18 +323,17 @@ function handleDisconnect(playerId: string) {
       winner: winnerColor,
     } as ServerMessage);
     
-    // Cleanup
-    const oldTimer = moveTimers.get(matchId);
-    if (oldTimer) {
-      clearTimeout(oldTimer);
-      moveTimers.delete(matchId);
-    }
+    // Cleanup all timers
+    cleanupGameTimers(matchId);
+    cleanupPlayerTimers(playerId);
+    cleanupPlayerTimers(game.playerRed);
+    cleanupPlayerTimers(game.playerBlack);
+    
     activeGames.delete(matchId);
     playerToGame.delete(game.playerRed);
     playerToGame.delete(game.playerBlack);
-    playerDisconnectTimers.delete(playerId);
     
-    console.log(`Game ${matchId} forfeited by ${playerId}`);
+    logGameEvent('Game forfeited', matchId, { reason: 'disconnect', forfeitedBy: playerId });
   }, 30000); // 30 seconds
   
   playerDisconnectTimers.set(playerId, timer);
@@ -273,7 +352,7 @@ function handleReconnect(playerId: string) {
   if (timer) {
     clearTimeout(timer);
     playerDisconnectTimers.delete(playerId);
-    console.log(`Player ${playerId} reconnected, cleared disconnect timer`);
+    logger.info('Player reconnected, cleared disconnect timer', { playerId });
     
     const matchId = playerToGame.get(playerId);
     if (matchId) {
@@ -292,17 +371,13 @@ function handleReconnect(playerId: string) {
 
 // Start move timer (45 seconds per move)
 function startMoveTimer(matchId: string, game: GameState) {
-  // Clear existing timer if any
-  const oldTimer = moveTimers.get(matchId);
-  if (oldTimer) {
-    clearTimeout(oldTimer);
-  }
+  // Clear existing timer
+  cleanupGameTimers(matchId);
   
   // Only start timer if game is active and not already won
   if (game.winner !== null) return;
   
   const timer = setTimeout(async () => {
-    // Time's up - forfeit current player
     const currentPlayerId = game.currentTurn === 'red' ? game.playerRed : game.playerBlack;
     const winnerId = game.currentTurn === 'red' ? game.playerBlack : game.playerRed;
     const winnerColor: 'red' | 'black' = game.currentTurn === 'red' ? 'black' : 'red';
@@ -312,7 +387,7 @@ function startMoveTimer(matchId: string, game: GameState) {
     try {
       await finishMatch(matchId, winnerId);
     } catch (error) {
-      console.error('Error finishing match:', error);
+      logger.error('Error finishing match (timeout)', { error: error instanceof Error ? error.message : String(error), matchId, winnerId });
     }
     
     // Notify players
@@ -322,19 +397,22 @@ function startMoveTimer(matchId: string, game: GameState) {
     } as ServerMessage);
     
     // Cleanup
+    cleanupGameTimers(matchId);
+    cleanupPlayerTimers(game.playerRed);
+    cleanupPlayerTimers(game.playerBlack);
     activeGames.delete(matchId);
     playerToGame.delete(game.playerRed);
     playerToGame.delete(game.playerBlack);
-    moveTimers.delete(matchId);
     
-    console.log(`Game ${matchId} forfeited by ${currentPlayerId} (timeout)`);
+    logGameEvent('Game forfeited', matchId, { reason: 'timeout', forfeitedBy: currentPlayerId });
   }, 45000); // 45 seconds
   
   moveTimers.set(matchId, timer);
 }
 
 io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
+  const clientIp = socket.handshake.address || socket.request.socket.remoteAddress || 'unknown';
+  logSocketEvent('Client connected', socket.id, { ip: clientIp });
   
   let currentPlayerId: string | null = null;
   let currentNickname: string | null = null;
@@ -345,11 +423,9 @@ io.on('connection', (socket) => {
     const args = packet.data || [];
     const eventName = args[0];
     if (eventName === 'MOVE') {
-      console.log(`[Socket ${socket.id}] ========== MOVE EVENT RECEIVED ==========`);
-      console.log(`[Socket ${socket.id}] MOVE data:`, JSON.stringify(args[1]));
-      console.log(`[Socket ${socket.id}] Full packet:`, JSON.stringify(packet));
+      logSocketEvent('MOVE event received', socket.id, { data: args[1] });
     } else if (eventName) {
-      console.log(`[Socket ${socket.id}] Event received:`, eventName);
+      logSocketEvent('Event received', socket.id, { eventName });
     }
     originalOnevent.call(this, packet);
   };
@@ -357,16 +433,39 @@ io.on('connection', (socket) => {
   // Set nickname and create/get player
   socket.on('SET_NICKNAME', async (message: ClientMessage) => {
     try {
-      if (!message.nickname || message.nickname.trim().length === 0) {
-        socket.emit('ERROR', { type: 'ERROR', message: 'Nickname is required' } as ServerMessage);
+      // Rate limit check
+      if (!(await rateLimitNickname(socket.id, clientIp))) {
+        socket.emit('ERROR', { 
+          type: 'ERROR', 
+          message: 'Too many nickname attempts. Please wait a minute.' 
+        } as ServerMessage);
         return;
       }
       
-      const nickname = message.nickname.trim();
+      // Validate input
+      if (!message.nickname || !isValidNickname(message.nickname)) {
+        socket.emit('ERROR', { 
+          type: 'ERROR', 
+          message: 'Nickname must be 1-20 characters and contain only letters, numbers, and spaces.' 
+        } as ServerMessage);
+        return;
+      }
+      
+      // Sanitize nickname
+      const nickname = sanitizeNickname(message.nickname);
+      
+      // Validate playerId if provided
+      if (message.playerId && !isValidUUID(message.playerId)) {
+        socket.emit('ERROR', { 
+          type: 'ERROR', 
+          message: 'Invalid player ID format.' 
+        } as ServerMessage);
+        return;
+      }
       
       // Check if player provided an existing playerId (for reconnection after page refresh)
       let existingPlayerId: string | null = null;
-      if (message.playerId && typeof message.playerId === 'string') {
+      if (message.playerId && typeof message.playerId === 'string' && isValidUUID(message.playerId)) {
         // First check if this playerId is in an active game
         const matchId = playerToGame.get(message.playerId);
         if (matchId) {
@@ -374,7 +473,7 @@ io.on('connection', (socket) => {
           if (game && game.winner === null) {
             // Player is reconnecting to an active game
             existingPlayerId = message.playerId;
-            console.log(`Player reconnecting with existing playerId: ${existingPlayerId} to match: ${matchId}`);
+            logger.info('Player reconnecting with existing playerId', { playerId: existingPlayerId, matchId });
             
             // Cancel disconnect timer if it exists
             handleReconnect(existingPlayerId);
@@ -382,13 +481,13 @@ io.on('connection', (socket) => {
             // Rejoin match room
             socket.join(`match:${matchId}`);
             
-            // Update nickname mapping
+            // Update nickname mapping (sanitized)
             playerNicknames.set(existingPlayerId, nickname);
             
             // Determine player color
             const yourColor = existingPlayerId === game.playerRed ? 'red' : 'black';
             const opponentId = yourColor === 'red' ? game.playerBlack : game.playerRed;
-            const opponentNickname = playerNicknames.get(opponentId) || 'Opponent';
+            const opponentNickname = sanitizeText(playerNicknames.get(opponentId) || 'Opponent', 20);
             
             currentPlayerId = existingPlayerId;
             currentNickname = nickname;
@@ -396,7 +495,7 @@ io.on('connection', (socket) => {
             // Join player-specific room
             socket.join(`player:${currentPlayerId}`);
             
-            console.log(`Player ${currentNickname} (${currentPlayerId}) reconnected to match ${matchId}`);
+            logger.info('Player reconnected to match', { playerId: currentPlayerId, nickname: currentNickname, matchId });
             
             // Send player ID back to client
             socket.emit('NICKNAME_SET', {
@@ -438,10 +537,10 @@ io.on('connection', (socket) => {
           const existingPlayer = await getPlayerById(message.playerId);
           if (existingPlayer) {
             existingPlayerId = message.playerId;
-            console.log(`Reusing existing playerId: ${existingPlayerId} for nickname: ${nickname}`);
+            logger.info('Reusing existing playerId', { playerId: existingPlayerId, nickname });
           }
         } catch (dbError: any) {
-          console.log('Could not verify existing playerId, will create new player:', dbError.message);
+          logger.info('Could not verify existing playerId, will create new player', { playerId: message.playerId, error: dbError.message });
         }
       }
       
@@ -452,24 +551,24 @@ io.on('connection', (socket) => {
           player = await createPlayer(nickname);
           currentPlayerId = player.id;
         } catch (dbError: any) {
-          console.error('Database error creating player:', dbError);
+          logger.error('Database error creating player', { error: dbError instanceof Error ? dbError.message : String(dbError), nickname });
           // If database fails, use a temporary ID based on socket ID and nickname
           // This allows the game to work even if database is down
           currentPlayerId = `temp_${socket.id}_${Date.now()}`;
-          console.warn(`Using temporary player ID: ${currentPlayerId}`);
+          logger.warn('Using temporary player ID', { playerId: currentPlayerId, nickname, socketId: socket.id });
         }
       } else {
         // Reusing existing playerId (already set above for reconnection case)
         currentPlayerId = existingPlayerId;
       }
       
-      currentNickname = nickname;
+      currentNickname = nickname; // Already sanitized
       playerNicknames.set(currentPlayerId, currentNickname);
       
       // Join player-specific room
       socket.join(`player:${currentPlayerId}`);
       
-      console.log(`Player ${currentNickname} (${currentPlayerId}) connected`);
+      logger.info('Player connected', { playerId: currentPlayerId, nickname: currentNickname, socketId: socket.id });
       
       // Send player ID back to client
       socket.emit('NICKNAME_SET', {
@@ -481,7 +580,7 @@ io.on('connection', (socket) => {
       // Send lobby list
       broadcastLobbyList();
     } catch (error: any) {
-      console.error('Error setting nickname:', error);
+      logger.error('Error setting nickname', { error: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack : undefined, socketId: socket.id });
       socket.emit('ERROR', { 
         type: 'ERROR', 
         message: `Failed to set nickname: ${error.message || 'Unknown error'}` 
@@ -490,9 +589,18 @@ io.on('connection', (socket) => {
   });
   
   // Create lobby
-  socket.on('CREATE_LOBBY', () => {
+  socket.on('CREATE_LOBBY', async () => {
     if (!currentPlayerId) {
       socket.emit('ERROR', { type: 'ERROR', message: 'Please set nickname first' } as ServerMessage);
+      return;
+    }
+    
+    // Rate limit check
+    if (!(await rateLimitLobby(socket.id, clientIp))) {
+      socket.emit('ERROR', { 
+        type: 'ERROR', 
+        message: 'Too many lobby creations. Please wait 10 seconds.' 
+      } as ServerMessage);
       return;
     }
     
@@ -522,7 +630,7 @@ io.on('connection', (socket) => {
     // Also send personalized list to creator (includes isYourLobby flag)
     broadcastLobbyList(currentPlayerId);
     
-    console.log(`Lobby ${lobbyId} created by ${currentNickname}`);
+    logger.info('Lobby created', { lobbyId, creatorId: currentPlayerId, creatorNickname: currentNickname });
   });
 
   socket.on('REQUEST_LOBBY_LIST', () => {
@@ -569,7 +677,7 @@ io.on('connection', (socket) => {
         // Determine player color and opponent info
         const yourColor = currentPlayerId === game.playerRed ? 'red' : 'black';
         const opponentId = yourColor === 'red' ? game.playerBlack : game.playerRed;
-        const opponentNickname = playerNicknames.get(opponentId) || 'Opponent';
+        const opponentNickname = sanitizeText(playerNicknames.get(opponentId) || 'Opponent', 20);
         
         // Send game state back to player
         socket.emit('GAME_START', {
@@ -579,6 +687,8 @@ io.on('connection', (socket) => {
           board: game.board,
           opponentNickname,
           nextTurn: game.currentTurn,
+          capturesRed: game.capturesRed ?? 0,
+          capturesBlack: game.capturesBlack ?? 0,
         } as ServerMessage);
         
         // Update lobby list
@@ -610,7 +720,7 @@ io.on('connection', (socket) => {
     // Join match room for future use
     socket.join(`match:${lobby.id}`);
     
-    console.log(`${currentNickname} joined lobby ${message.lobbyId}`);
+    logger.info('Player joined lobby', { playerId: currentPlayerId, nickname: currentNickname, lobbyId: message.lobbyId });
     
     // Start game if full
     if (lobby.players.length === 2) {
@@ -625,33 +735,57 @@ io.on('connection', (socket) => {
   
   // Make a move
   socket.on('MOVE', async (message: any) => {
-    console.log(`[MOVE] ========== MOVE HANDLER CALLED ==========`);
-    console.log(`[MOVE] Socket ID: ${socket.id}`);
-    console.log(`[MOVE] Raw message:`, message);
-    console.log(`[MOVE] Message keys:`, message ? Object.keys(message) : 'null');
+    logger.debug(`[MOVE] Handler called`, { socketId: socket.id, message: message ? Object.keys(message) : null });
     
     try {
-      // Ensure message is in correct format
-      const moveMessage: ClientMessage = message && typeof message === 'object' ? message : { type: 'MOVE', ...message };
+      // Rate limit check
+      if (!(await rateLimitMove(socket.id, clientIp))) {
+        socket.emit('MOVE_REJECTED', { 
+          type: 'MOVE_REJECTED', 
+          reason: 'Too many moves. Please slow down.' 
+        } as ServerMessage);
+        return;
+      }
       
-      console.log(`[MOVE] Processed message:`, JSON.stringify(moveMessage));
-      console.log(`[MOVE] Current player ID:`, currentPlayerId);
-      
+      // Validate input types and values
       if (!currentPlayerId) {
-        console.log('[MOVE] Rejected: Not authenticated');
+        logSecurityEvent('Move rejected - not authenticated', clientIp, { socketId: socket.id });
         socket.emit('MOVE_REJECTED', { type: 'MOVE_REJECTED', reason: 'Not authenticated' } as ServerMessage);
         return;
       }
       
-      if (moveMessage.from === undefined || moveMessage.to === undefined || !moveMessage.matchId) {
-        console.log('[MOVE] Rejected: Invalid move data', { from: moveMessage.from, to: moveMessage.to, matchId: moveMessage.matchId });
+      if (typeof message !== 'object' || message === null) {
+        socket.emit('MOVE_REJECTED', { 
+          type: 'MOVE_REJECTED', 
+          reason: 'Invalid message format' 
+        } as ServerMessage);
+        return;
+      }
+      
+      // Ensure message is in correct format
+      const moveMessage: ClientMessage = message && typeof message === 'object' ? message : { type: 'MOVE', ...message };
+      
+      // Validate board positions
+      if (!isValidBoardPosition(moveMessage.from!) || 
+          !isValidBoardPosition(moveMessage.to!) || 
+          !moveMessage.matchId) {
+        logSecurityEvent('Move rejected - invalid data', clientIp, { from: moveMessage.from, to: moveMessage.to, matchId: moveMessage.matchId });
         socket.emit('MOVE_REJECTED', { type: 'MOVE_REJECTED', reason: 'Invalid move data' } as ServerMessage);
+        return;
+      }
+      
+      // Validate match ID format
+      if (!isValidMatchId(moveMessage.matchId)) {
+        socket.emit('MOVE_REJECTED', { 
+          type: 'MOVE_REJECTED', 
+          reason: 'Invalid match ID format' 
+        } as ServerMessage);
         return;
       }
       
       const game = activeGames.get(moveMessage.matchId);
       if (!game) {
-        console.log('[MOVE] Rejected: Game not found');
+        logger.warn('[MOVE] Rejected: Game not found', { matchId: moveMessage.matchId, playerId: currentPlayerId });
         socket.emit('MOVE_REJECTED', { type: 'MOVE_REJECTED', reason: 'Game not found' } as ServerMessage);
         return;
       }
@@ -659,7 +793,7 @@ io.on('connection', (socket) => {
       // Check if it's player's turn
       const playerColor = currentPlayerId === game.playerRed ? 'red' : 'black';
       if (playerColor !== game.currentTurn) {
-        console.log(`[MOVE] Rejected: Not player's turn. Player: ${playerColor}, Current turn: ${game.currentTurn}`);
+        logger.debug(`[MOVE] Rejected: Not player's turn`, { playerColor, currentTurn: game.currentTurn, matchId: moveMessage.matchId });
         socket.emit('MOVE_REJECTED', { type: 'MOVE_REJECTED', reason: 'Not your turn' } as ServerMessage);
         return;
       }
@@ -675,12 +809,12 @@ io.on('connection', (socket) => {
       );
       
       if (!validation.valid) {
-        console.log('[MOVE] Rejected: Invalid move -', validation.reason);
+        logger.debug('[MOVE] Rejected: Invalid move', { reason: validation.reason, from: moveMessage.from, to: moveMessage.to, matchId: moveMessage.matchId });
         socket.emit('MOVE_REJECTED', { type: 'MOVE_REJECTED', reason: validation.reason || 'Invalid move' } as ServerMessage);
         return;
       }
       
-      console.log('[MOVE] Validated, applying move...');
+      logger.debug('[MOVE] Validated, applying move', { matchId: moveMessage.matchId, from: moveMessage.from, to: moveMessage.to });
       
       // Apply move (use captures from validation)
       const captures = validation.captures || [];
@@ -688,16 +822,16 @@ io.on('connection', (socket) => {
       game.board = result.newBoard;
       game.lastMove = { from: moveMessage.from!, to: moveMessage.to! };
       
-      // Track captures - always update, even during continued jumps
-      if (game.capturesRed === undefined) game.capturesRed = 0;
-      if (game.capturesBlack === undefined) game.capturesBlack = 0;
+      // Track captures - always update, even during continued jumps (ensure initialized)
+      game.capturesRed = game.capturesRed ?? 0;
+      game.capturesBlack = game.capturesBlack ?? 0;
       if (result.captures && result.captures.length > 0) {
         if (game.currentTurn === 'red') {
           game.capturesRed += result.captures.length;
-          console.log(`[MOVE] Red captured ${result.captures.length} piece(s). Total: ${game.capturesRed}`);
+          logGameEvent('Piece captured', moveMessage.matchId, { player: 'red', captures: result.captures.length, total: game.capturesRed });
         } else {
           game.capturesBlack += result.captures.length;
-          console.log(`[MOVE] Black captured ${result.captures.length} piece(s). Total: ${game.capturesBlack}`);
+          logGameEvent('Piece captured', moveMessage.matchId, { player: 'black', captures: result.captures.length, total: game.capturesBlack });
         }
       }
       
@@ -708,7 +842,7 @@ io.on('connection', (socket) => {
         await addMove(moveMessage.matchId!, game.moveCount, moveMessage.from!, moveMessage.to!);
       } catch (dbError) {
         // Non-critical - game continues even if move isn't saved
-        console.error('Error saving move to database (non-critical):', dbError);
+        logger.warn('Error saving move to database (non-critical)', { error: dbError instanceof Error ? dbError.message : String(dbError), matchId: moveMessage.matchId, moveNumber: game.moveCount });
       }
       
       // Check for continued jump
@@ -746,7 +880,7 @@ io.on('connection', (socket) => {
           await finishMatch(moveMessage.matchId!, winnerId);
         } catch (dbError) {
           // Non-critical - game can end even if database fails
-          console.error('Error finishing match in database (non-critical):', dbError);
+          logger.warn('Error finishing match in database (non-critical)', { error: dbError instanceof Error ? dbError.message : String(dbError), matchId: moveMessage.matchId, winnerId });
         }
         
         io.to(`match:${moveMessage.matchId}`).emit('GAME_OVER', {
@@ -779,22 +913,15 @@ io.on('connection', (socket) => {
           capturesBlack: game.capturesBlack ?? 0,
           moveTimeRemaining: game.moveTimerStart ? Math.max(0, 45 - Math.floor((Date.now() - game.moveTimerStart) / 1000)) : 45,
         } as ServerMessage;
-        console.log(`[MOVE] Captures - Red: ${moveAcceptedMessage.capturesRed}, Black: ${moveAcceptedMessage.capturesBlack}`);
-        console.log(`[MOVE] Broadcasting MOVE_ACCEPTED to match:${moveMessage.matchId}`);
-        console.log(`[MOVE] Board length: ${moveAcceptedMessage.board?.length}, Next turn: ${moveAcceptedMessage.nextTurn}`);
-        console.log(`[MOVE] Full message:`, JSON.stringify(moveAcceptedMessage));
+        logger.debug(`[MOVE] Move accepted`, { matchId: moveMessage.matchId, capturesRed: moveAcceptedMessage.capturesRed, capturesBlack: moveAcceptedMessage.capturesBlack, nextTurn: moveAcceptedMessage.nextTurn });
         
         // Emit to both the match room and directly to the socket to ensure delivery
         io.to(`match:${moveMessage.matchId}`).emit('MOVE_ACCEPTED', moveAcceptedMessage);
-        console.log(`[MOVE] Emitted to match room: match:${moveMessage.matchId}`);
-        
         socket.emit('MOVE_ACCEPTED', moveAcceptedMessage);
-        console.log(`[MOVE] Emitted directly to socket ${socket.id}`);
-        console.log(`[MOVE] Socket connected: ${socket.connected}, Socket ID: ${socket.id}`);
-        console.log(`[MOVE] ========== MOVE HANDLER COMPLETE ==========`);
+        logger.debug(`[MOVE] Move broadcast complete`, { matchId: moveMessage.matchId, socketId: socket.id });
       }
     } catch (error) {
-      console.error('[MOVE] Error processing move:', error);
+      logger.error('[MOVE] Error processing move', { error: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack : undefined, socketId: socket.id, playerId: currentPlayerId });
       socket.emit('MOVE_REJECTED', { type: 'MOVE_REJECTED', reason: `Server error: ${error instanceof Error ? error.message : 'Unknown error'}` } as ServerMessage);
     }
   });
@@ -835,23 +962,65 @@ io.on('connection', (socket) => {
   });
   
   // Chat message
-  socket.on('CHAT_MESSAGE', (message: ClientMessage) => {
-    if (!currentPlayerId || !message.matchId || !message.message) return;
-    
-    const game = activeGames.get(message.matchId);
-    if (!game) return;
-    
-    // Verify player is in this match
-    if (currentPlayerId !== game.playerRed && currentPlayerId !== game.playerBlack) {
+  socket.on('CHAT_MESSAGE', async (message: ClientMessage) => {
+    // Rate limit check
+    if (!(await rateLimitChat(socket.id, clientIp))) {
+      socket.emit('ERROR', { 
+        type: 'ERROR', 
+        message: 'Too many messages. Please slow down.' 
+      } as ServerMessage);
       return;
     }
     
-    const senderNickname = playerNicknames.get(currentPlayerId) || 'Unknown';
+    if (!currentPlayerId || !message.matchId || !message.message) {
+      socket.emit('ERROR', { 
+        type: 'ERROR', 
+        message: 'Invalid chat message' 
+      } as ServerMessage);
+      return;
+    }
+    
+    // Validate match ID
+    if (!isValidMatchId(message.matchId)) {
+      socket.emit('ERROR', { 
+        type: 'ERROR', 
+        message: 'Invalid match ID' 
+      } as ServerMessage);
+      return;
+    }
+    
+    const game = activeGames.get(message.matchId);
+    if (!game) {
+      socket.emit('ERROR', { 
+        type: 'ERROR', 
+        message: 'Game not found' 
+      } as ServerMessage);
+      return;
+    }
+    
+    // Verify player is in this match
+    if (currentPlayerId !== game.playerRed && currentPlayerId !== game.playerBlack) {
+      socket.emit('ERROR', { 
+        type: 'ERROR', 
+        message: 'You are not in this match' 
+      } as ServerMessage);
+      return;
+    }
+    
+    // Sanitize message and nickname
+    const senderNickname = sanitizeText(playerNicknames.get(currentPlayerId) || 'Unknown', 20);
+    const sanitizedMessage = sanitizeText(message.message, 200);
+    
+    // Don't send empty messages
+    if (sanitizedMessage.trim().length === 0) {
+      return;
+    }
+    
     const chatMessage: ServerMessage = {
       type: 'CHAT_MESSAGE',
       matchId: message.matchId,
       senderNickname,
-      message: message.message.trim().substring(0, 200), // Limit message length
+      message: sanitizedMessage,
       timestamp: Date.now(),
     };
     
@@ -948,7 +1117,7 @@ io.on('connection', (socket) => {
       // Determine player color and opponent info
       const yourColor = currentPlayerId === game.playerRed ? 'red' : 'black';
       const opponentId = yourColor === 'red' ? game.playerBlack : game.playerRed;
-      const opponentNickname = playerNicknames.get(opponentId) || 'Opponent';
+      const opponentNickname = sanitizeText(playerNicknames.get(opponentId) || 'Opponent', 20);
       
       // Send game state back to player
       const timeRemaining = game.moveTimerStart ? Math.max(0, 45 - Math.floor((Date.now() - game.moveTimerStart) / 1000)) : 45;
@@ -959,8 +1128,8 @@ io.on('connection', (socket) => {
         board: game.board,
         opponentNickname,
         nextTurn: game.currentTurn,
-        capturesRed: game.capturesRed || 0,
-        capturesBlack: game.capturesBlack || 0,
+        capturesRed: game.capturesRed ?? 0,
+        capturesBlack: game.capturesBlack ?? 0,
         moveTimeRemaining: timeRemaining,
       } as ServerMessage);
       
@@ -1001,7 +1170,7 @@ io.on('connection', (socket) => {
     try {
       await finishMatch(message.matchId, winnerId);
     } catch (error) {
-      console.error('Error finishing match in database:', error);
+      logger.error('Error finishing match in database (forfeit)', { error: error instanceof Error ? error.message : String(error), matchId: message.matchId, winnerId });
     }
     
     // Notify both players
@@ -1026,13 +1195,16 @@ io.on('connection', (socket) => {
     // Update lobby list
     broadcastLobbyList(currentPlayerId);
     
-    console.log(`Match ${message.matchId} forfeited by ${currentNickname}`);
+    logGameEvent('Match forfeited', message.matchId, { forfeitedBy: currentPlayerId, nickname: currentNickname });
   });
   
   socket.on('disconnect', (reason) => {
-    console.log(`Client ${socket.id} disconnected: ${reason}`);
+    logSocketEvent('Client disconnected', socket.id, { reason });
     
     if (currentPlayerId) {
+      // Cleanup timers immediately on disconnect
+      cleanupPlayerTimers(currentPlayerId);
+      
       // Only trigger disconnect timer if it's an actual disconnect (not a reconnection attempt)
       // Socket.IO will automatically try to reconnect, so we give it time
       // Only start the timer if it's a real disconnect (not just a temporary network issue)
@@ -1054,11 +1226,16 @@ io.on('connection', (socket) => {
 });
 
 // Health check endpoint
-httpServer.on('request', (req, res) => {
+httpServer.on('request', async (req, res) => {
   if (req.url === '/health') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
+    // Check database health asynchronously
+    const dbHealthy = await checkDatabaseHealth().catch(() => false);
+    
+    const statusCode = dbHealthy ? 200 : 503;
+    res.writeHead(statusCode, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ 
-      status: 'ok', 
+      status: dbHealthy ? 'ok' : 'degraded', 
+      database: dbHealthy ? 'healthy' : 'unhealthy',
       connections: io.engine.clientsCount,
       activeGames: activeGames.size,
       lobbies: lobbies.size,
@@ -1076,62 +1253,164 @@ const PORT = process.env.PORT || 3001;
 
 async function startServer() {
   try {
-    console.log('Starting Checkers WebSocket server...');
-    console.log(`Node version: ${process.version}`);
-    console.log(`Port: ${PORT}`);
-    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    // Validate required environment variables
+    const requiredEnvVars: { [key: string]: string | undefined } = {
+      POSTGRES_URL: process.env.POSTGRES_URL,
+    };
+    
+    const optionalEnvVars: { [key: string]: string | undefined } = {
+      CLIENT_URL: process.env.CLIENT_URL,
+      ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS,
+      PORT: process.env.PORT,
+      NODE_ENV: process.env.NODE_ENV,
+    };
+    
+    // Check required vars
+    const missingVars: string[] = [];
+    for (const [key, value] of Object.entries(requiredEnvVars)) {
+      if (!value || value.trim() === '') {
+        missingVars.push(key);
+      }
+    }
+    
+      if (missingVars.length > 0 && process.env.NODE_ENV === 'production') {
+        logger.error('Missing required environment variables', { missingVars });
+        process.exit(1);
+      }
+    
+    // Warn about missing optional vars in production
+    if (process.env.NODE_ENV === 'production') {
+      const missingOptional: string[] = [];
+      for (const [key, value] of Object.entries(optionalEnvVars)) {
+        if (!value || value.trim() === '') {
+          missingOptional.push(key);
+        }
+      }
+      
+      if (missingOptional.length > 0 && missingOptional.includes('ALLOWED_ORIGINS')) {
+        logger.error('✗ ALLOWED_ORIGINS is required in production for CORS security!');
+        logger.error('Set ALLOWED_ORIGINS=https://yourdomain.com,https://www.yourdomain.com');
+        process.exit(1);
+      }
+      
+      if (missingOptional.length > 0 && missingOptional.includes('ALLOWED_ORIGINS') === false) {
+        logger.warn('Missing optional environment variables (may cause issues)', { missingOptional });
+      }
+    }
+    
+    // Validate POSTGRES_URL format if present
+    if (process.env.POSTGRES_URL) {
+      if (!process.env.POSTGRES_URL.startsWith('postgresql://') && 
+          !process.env.POSTGRES_URL.startsWith('postgres://')) {
+        logger.error('✗ POSTGRES_URL must start with postgresql:// or postgres://');
+        if (process.env.NODE_ENV === 'production') {
+          process.exit(1);
+        } else {
+          logger.warn('⚠ Continuing in development mode, but database may not work');
+        }
+      }
+    }
+    
+    logger.info('Starting Checkers WebSocket server...', { 
+      nodeVersion: process.version, 
+      port: PORT, 
+      environment: process.env.NODE_ENV || 'development' 
+    });
+    logger.info('Configuration', {
+      postgresUrl: process.env.POSTGRES_URL ? 'configured' : 'missing',
+      clientUrl: process.env.CLIENT_URL || 'not set',
+      allowedOrigins: process.env.ALLOWED_ORIGINS || 'not set',
+    });
     
     // Initialize database schema
     try {
       await initDatabase();
-      console.log('✓ Database initialized');
+      logger.info('✓ Database initialized');
+      
+      // Health check
+      const dbHealthy = await checkDatabaseHealth();
+      if (!dbHealthy) {
+        logger.error('✗ Database health check failed');
+        if (process.env.NODE_ENV === 'production') {
+          process.exit(1);
+        } else {
+          logger.warn('⚠ Continuing without database (development mode)');
+        }
+      } else {
+        logger.info('✓ Database health check passed');
+      }
     } catch (error) {
-      console.error('⚠ Error initializing database:', error);
-      // Continue anyway - database might already be initialized
+      logger.error('Error initializing database', { error: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack : undefined });
+      if (process.env.NODE_ENV === 'production') {
+        logger.error('Cannot continue without database in production');
+        process.exit(1);
+      }
+      // Continue anyway in development - database might already be initialized
     }
 
     httpServer.listen(PORT, '0.0.0.0', () => {
-      console.log(`✓ Checkers WebSocket server running on port ${PORT}`);
       const corsOrigin = getCorsOrigin();
-      console.log(`✓ CORS enabled for: ${typeof corsOrigin === 'string' ? corsOrigin : corsOrigin === true ? 'all origins' : 'none'}`);
-      console.log(`✓ Health check: http://localhost:${PORT}/health`);
-      console.log(`✓ Socket.IO server ready for connections`);
+      logger.info('Server started successfully', {
+        port: PORT,
+        cors: typeof corsOrigin === 'string' ? corsOrigin : Array.isArray(corsOrigin) ? corsOrigin.join(',') : 'all origins',
+        healthCheck: `http://localhost:${PORT}/health`,
+      });
     });
 
     httpServer.on('error', (error: NodeJS.ErrnoException) => {
-      console.error('✗ HTTP server error:', error);
+      logger.error('HTTP server error', { 
+        error: error.message, 
+        code: error.code, 
+        port: PORT,
+        stack: error.stack 
+      });
       if (error.code === 'EADDRINUSE') {
-        console.error(`Port ${PORT} is already in use`);
+        logger.error('Port already in use', { port: PORT });
       }
       process.exit(1);
     });
 
     process.on('uncaughtException', (error) => {
-      console.error('✗ Uncaught exception:', error);
+      logger.error('Uncaught exception', { 
+        error: error.message, 
+        stack: error.stack,
+        name: error.name 
+      });
       process.exit(1);
     });
 
     process.on('unhandledRejection', (reason, promise) => {
-      console.error('✗ Unhandled rejection at:', promise, 'reason:', reason);
+      logger.error('Unhandled rejection', { 
+        reason: reason instanceof Error ? reason.message : String(reason),
+        stack: reason instanceof Error ? reason.stack : undefined,
+        promise: String(promise)
+      });
     });
   } catch (error) {
-    console.error('✗ Failed to start server:', error);
+    logger.error('Failed to start server', { 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    });
     process.exit(1);
   }
 }
 
 startServer().catch((error) => {
-  console.error('✗ Fatal error starting server:', error);
+  logger.error('Fatal error starting server', { 
+    error: error instanceof Error ? error.message : String(error),
+    stack: error instanceof Error ? error.stack : undefined
+  });
   process.exit(1);
 });
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
-  console.log('SIGTERM received, shutting down gracefully...');
+  logger.info('SIGTERM received, shutting down gracefully...');
   httpServer.close(() => {
-    console.log('HTTP server closed');
+    logger.info('HTTP server closed');
     io.close(() => {
-      console.log('Socket.IO server closed');
+      logger.info('Socket.IO server closed');
+      logger.info('Graceful shutdown complete');
       process.exit(0);
     });
   });

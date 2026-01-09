@@ -1,5 +1,12 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { getMatchHistory, initDatabase } from './database';
+import logger from '../utils/logger.js';
+
+// Validate UUID format
+function isValidUUID(str: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return typeof str === 'string' && uuidRegex.test(str);
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
@@ -12,6 +19,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!playerId || typeof playerId !== 'string') {
       return res.status(400).json({ success: false, error: 'Player ID is required' });
     }
+    
+    // Validate UUID format
+    if (!isValidUUID(playerId)) {
+      return res.status(400).json({ success: false, error: 'Invalid player ID format' });
+    }
 
     // Try to initialize database, but don't fail if it already exists
     try {
@@ -19,28 +31,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } catch (initError: any) {
       // Ignore "already exists" errors, but log others
       if (!initError.message?.includes('already exists') && !initError.message?.includes('duplicate')) {
-        console.warn('[match-history] Database init warning:', initError.message);
+        logger.warn('[match-history] Database init warning', { error: initError.message });
       }
     }
 
-    console.log('[match-history] Fetching history for playerId:', playerId);
+    logger.info('[match-history] Fetching history', { playerId });
     
     try {
       const history = await getMatchHistory(playerId);
-      console.log('[match-history] Found', history.length, 'matches');
+      logger.info('[match-history] Found matches', { playerId, count: history.length });
 
       return res.status(200).json({
         success: true,
         data: history,
       });
     } catch (dbError: any) {
-      console.error('[match-history] Database query error:', dbError);
-      console.error('[match-history] Error message:', dbError.message);
-      console.error('[match-history] Error code:', dbError.code);
+      logger.error('[match-history] Database query error', { 
+        playerId, 
+        error: dbError.message, 
+        code: dbError.code,
+        stack: dbError.stack 
+      });
       
       // Return empty array if database is unavailable rather than 500
       if (dbError.message?.includes('connection') || dbError.message?.includes('timeout') || dbError.code === 'ECONNREFUSED') {
-        console.warn('[match-history] Database unavailable, returning empty history');
+        logger.warn('[match-history] Database unavailable, returning empty history', { playerId });
         return res.status(200).json({
           success: true,
           data: [],
@@ -50,15 +65,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       throw dbError; // Re-throw if it's a different error
     }
   } catch (error: any) {
-    console.error('[match-history] Error getting match history:', error);
-    console.error('[match-history] Error name:', error.name);
-    console.error('[match-history] Error message:', error.message);
-    if (error.stack) {
-      console.error('[match-history] Error stack:', error.stack);
-    }
-    if (error.code) {
-      console.error('[match-history] Error code:', error.code);
-    }
+    logger.error('[match-history] Error getting match history', { 
+      error: error.message,
+      name: error.name,
+      code: error.code,
+      stack: error.stack 
+    });
     
     return res.status(500).json({
       success: false,
