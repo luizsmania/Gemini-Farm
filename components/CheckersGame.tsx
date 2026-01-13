@@ -970,14 +970,21 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   }, []);
 
   // Get square index from board-relative position
+  // Improved to work anywhere within the square, accounting for padding
   const getSquareFromPosition = useCallback((x: number, y: number): number | null => {
     if (!boardContainerRef.current) return null;
     const rect = boardContainerRef.current.getBoundingClientRect();
     const boardSize = Math.min(rect.width, rect.height);
     const squareSize = boardSize / BOARD_SIZE;
-    const col = Math.floor(x / squareSize);
-    const row = Math.floor(y / squareSize);
     
+    // Clamp coordinates to board bounds to handle edge cases
+    const clampedX = Math.max(0, Math.min(x, boardSize - 1));
+    const clampedY = Math.max(0, Math.min(y, boardSize - 1));
+    
+    const col = Math.floor(clampedX / squareSize);
+    const row = Math.floor(clampedY / squareSize);
+    
+    // Ensure we're within bounds
     if (row < 0 || row >= BOARD_SIZE || col < 0 || col >= BOARD_SIZE) {
       return null;
     }
@@ -1016,7 +1023,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     setDragPosition(pos);
     setDragStartPosition({ x: clientX, y: clientY }); // Store initial mouse position
     setHasDragged(false);
-  }, [board, currentTurn, yourColor, winner, canContinueJump, continueJumpFrom, getBoardRelativePosition, calculateLegalMoves]);
+  }, [board, currentTurn, yourColor, winner, canContinueJump, continueJumpFrom, getBoardRelativePosition, getCachedLegalMoves]);
 
   // Handle drag move - optimized with requestAnimationFrame for smooth performance
   const handleDragMove = useCallback((clientX: number, clientY: number) => {
@@ -1069,6 +1076,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       return;
     }
 
+    // Get the square from the drop position - this works anywhere within the square
     const dropIndex = getSquareFromPosition(pos.x, pos.y);
     
     // If dropped on a different square, try to make the move
@@ -1129,19 +1137,18 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           }, 3000);
         }
       } else {
-        // Invalid move - keep piece selected and legal moves visible, no error message
-        // DO NOT update board - only update for legal moves
+        // Invalid move - keep piece selected and legal moves visible
         setSelectedSquare(currentDraggingPiece.boardIndex);
         setLegalMoves(moves);
         setMandatoryCaptures([]);
       }
-      } else {
-        // Dropped on same square or invalid position - keep piece selected with legal moves
-        setSelectedSquare(currentDraggingPiece.boardIndex);
-        const moves = getCachedLegalMoves(currentDraggingPiece.boardIndex);
-        setLegalMoves(moves);
-      }
-  }, [draggingPiece, getBoardRelativePosition, getSquareFromPosition, getCachedLegalMoves, matchId, calculateAllMandatoryCaptures, board]);
+    } else {
+      // Dropped on same square or invalid position - keep piece selected with legal moves
+      setSelectedSquare(currentDraggingPiece.boardIndex);
+      const moves = getCachedLegalMoves(currentDraggingPiece.boardIndex);
+      setLegalMoves(moves);
+    }
+  }, [draggingPiece, getBoardRelativePosition, getSquareFromPosition, getCachedLegalMoves, matchId, board, isOffline, handleOfflineMove, indexToPos]);
 
   // Mouse event handlers for dragging
   useEffect(() => {
@@ -1488,12 +1495,13 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   }, [handleDragStart]);
 
   const handleSquareClickWrapper = useCallback((e: React.MouseEvent, boardIndex: number) => {
-    // If we actually dragged, don't process as click - drag handler already processed it
+    // If we actually dragged significantly, don't process as click - drag handler already processed it
+    // But allow clicks even if there was tiny movement (threshold handled in drag handlers)
     if (hasDragged) {
       return;
     }
     
-    // Clear dragging state to ensure clean state
+    // Clear dragging state to ensure clean state for click handling
     setDraggingPiece(null);
     setDragPosition(null);
     setDragStartPosition(null);
