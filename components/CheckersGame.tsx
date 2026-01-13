@@ -1061,17 +1061,20 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     }
 
     const currentDraggingPiece = draggingPiece;
+    const pieceIndex = currentDraggingPiece.boardIndex;
     
+    // Clear dragging state first
     setDraggingPiece(null);
     setDragPosition(null);
     setDragStartPosition(null);
+    // IMPORTANT: Reset hasDragged immediately so click handler can work after drag
     setHasDragged(false);
 
     const pos = getBoardRelativePosition(clientX, clientY);
     if (!pos) {
       // If we can't get position, keep the piece selected with legal moves visible
-      setSelectedSquare(currentDraggingPiece.boardIndex);
-      const moves = getCachedLegalMoves(currentDraggingPiece.boardIndex);
+      setSelectedSquare(pieceIndex);
+      const moves = getCachedLegalMoves(pieceIndex);
       setLegalMoves(moves);
       return;
     }
@@ -1080,14 +1083,14 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     const dropIndex = getSquareFromPosition(pos.x, pos.y);
     
     // If dropped on a different square, try to make the move
-    if (dropIndex !== null && dropIndex !== currentDraggingPiece.boardIndex) {
+    if (dropIndex !== null && dropIndex !== pieceIndex) {
       // Check if it's a valid move - ONLY update board if move is confirmed legal
-      const moves = getCachedLegalMoves(currentDraggingPiece.boardIndex);
+      const moves = getCachedLegalMoves(pieceIndex);
       if (moves.includes(dropIndex)) {
         // Only do optimistic update for confirmed legal moves
         const newBoard = [...board];
-        const piece = newBoard[currentDraggingPiece.boardIndex];
-        newBoard[currentDraggingPiece.boardIndex] = null;
+        const piece = newBoard[pieceIndex];
+        newBoard[pieceIndex] = null;
         newBoard[dropIndex] = piece;
         
         // Check for king promotion
@@ -1099,7 +1102,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         }
         
         // Save original board for potential revert
-        setPendingMove({ from: currentDraggingPiece.boardIndex, to: dropIndex, board: [...board] });
+        setPendingMove({ from: pieceIndex, to: dropIndex, board: [...board] });
         
         // Update board instantly (no animation for user's own moves)
         setBoard(newBoard);
@@ -1107,11 +1110,11 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         // Send move to server or handle offline
         if (isOffline && offlineGameServiceRef.current) {
           setTimeout(() => {
-            handleOfflineMove(currentDraggingPiece.boardIndex, dropIndex);
+            handleOfflineMove(pieceIndex, dropIndex);
           }, 50);
         } else {
           setTimeout(() => {
-            checkersWebSocketService.makeMove(matchId, currentDraggingPiece.boardIndex, dropIndex);
+            checkersWebSocketService.makeMove(matchId, pieceIndex, dropIndex);
           }, 50);
           
           setError(null);
@@ -1127,7 +1130,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           // Set a timeout to show error if no response
           moveTimeoutRef.current = setTimeout(() => {
             setSelectedSquare(current => {
-              if (current === currentDraggingPiece.boardIndex) {
+              if (current === pieceIndex) {
                 console.warn('No response from server after 3 seconds');
                 setError('No response from server. Check connection.');
               }
@@ -1136,17 +1139,21 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
             moveTimeoutRef.current = null;
           }, 3000);
         }
+        // Move was made - don't reset hasDragged here, it's already reset above
+        return;
       } else {
-        // Invalid move - keep piece selected and legal moves visible
-        setSelectedSquare(currentDraggingPiece.boardIndex);
+        // Invalid move - keep piece selected and legal moves visible (chess.com behavior)
+        setSelectedSquare(pieceIndex);
         setLegalMoves(moves);
         setMandatoryCaptures([]);
+        return;
       }
     } else {
-      // Dropped on same square or invalid position - keep piece selected with legal moves
-      setSelectedSquare(currentDraggingPiece.boardIndex);
-      const moves = getCachedLegalMoves(currentDraggingPiece.boardIndex);
+      // Dropped on same square or invalid position - keep piece selected with legal moves (chess.com behavior)
+      setSelectedSquare(pieceIndex);
+      const moves = getCachedLegalMoves(pieceIndex);
       setLegalMoves(moves);
+      return;
     }
   }, [draggingPiece, getBoardRelativePosition, getSquareFromPosition, getCachedLegalMoves, matchId, board, isOffline, handleOfflineMove, indexToPos]);
 
@@ -1163,13 +1170,11 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       if (draggingPiece) {
         if (hasDragged) {
           // We actually dragged - handle drag end
-          e.preventDefault();
-          e.stopPropagation();
+          // Don't prevent default or stop propagation - let click handler work if needed
           handleDragEnd(e.clientX, e.clientY);
         } else {
           // We didn't drag - it was just a click
           // Clear dragging state immediately to allow onClick to work
-          // Don't prevent default - let onClick fire
           setDraggingPiece(null);
           setDragPosition(null);
           setDragStartPosition(null);
@@ -1495,21 +1500,22 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   }, [handleDragStart]);
 
   const handleSquareClickWrapper = useCallback((e: React.MouseEvent, boardIndex: number) => {
-    // If we actually dragged significantly, don't process as click - drag handler already processed it
-    // But allow clicks even if there was tiny movement (threshold handled in drag handlers)
-    if (hasDragged) {
-      return;
-    }
-    
-    // Clear dragging state to ensure clean state for click handling
+    // Clear dragging state first to ensure clean state for click handling
     setDraggingPiece(null);
     setDragPosition(null);
     setDragStartPosition(null);
     setHasDragged(false);
     
+    // If we have a selected square, it means either:
+    // 1. We clicked on a piece (normal click)
+    // 2. We dragged but didn't make a move (drag released on same/invalid square)
+    // In both cases, we should allow the click handler to work for click-to-move
+    // Only skip if we just made a move (selectedSquare would be null and hasDragged true)
+    // But since we just reset hasDragged above, we can always process the click
+    
     console.log('Square clicked - boardIndex:', boardIndex, 'Piece:', board[boardIndex], 'Selected:', selectedSquare, 'Legal moves:', legalMoves);
     handleSquareClick(boardIndex);
-  }, [board, selectedSquare, legalMoves, hasDragged, handleSquareClick]);
+  }, [board, selectedSquare, legalMoves, handleSquareClick]);
 
   const renderSquare = useCallback((displayIndex: number) => {
     // Convert display index to board index
