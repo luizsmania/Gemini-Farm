@@ -34,8 +34,10 @@ class CheckersWebSocketService {
         transports: ['websocket', 'polling'],
         reconnection: true,
         reconnectionDelay: 1000,
-        reconnectionAttempts: 5,
-        timeout: 5000,
+        reconnectionAttempts: 10, // More attempts for Render cold starts
+        reconnectionDelayMax: 5000,
+        timeout: 30000, // 30 seconds - Render free tier can take this long to wake up
+        forceNew: false,
       });
 
       let timeoutId: NodeJS.Timeout | null = null;
@@ -91,14 +93,15 @@ class CheckersWebSocketService {
         console.error('Socket error:', error);
       });
 
-      // Timeout if connection takes too long
+      // Timeout if connection takes too long (longer for Render cold starts)
       timeoutId = setTimeout(() => {
         if (!this.socket?.connected) {
-          const error = new Error(`Connection timeout after 10s. Server URL: ${this.wsUrl}. Check that VITE_WS_URL is set correctly in Vercel.`);
+          const error = new Error(`Connection timeout after 35s. Server URL: ${this.wsUrl}. This might be a Render cold start (free tier takes ~30s to wake up). Check: 1) VITE_WS_URL is set correctly in Vercel, 2) Server is running on Render, 3) ALLOWED_ORIGINS includes your Vercel domain.`);
           console.error(error.message);
+          console.error('💡 Tip: Render free tier services sleep after 15min. First connection may take 30+ seconds.');
           reject(error);
         }
-      }, 10000);
+      }, 35000); // 35 seconds to account for Render cold starts
     });
   }
 

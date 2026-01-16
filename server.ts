@@ -16,7 +16,7 @@ import { initDatabase, createMatch, finishMatch, addMove, getPlayerById, createP
 import { GameState, Lobby, ClientMessage, ServerMessage } from './types/checkers.js';
 import { isValidUUID, isValidBoardPosition, sanitizeNickname, isValidNickname, sanitizeText, isValidMatchId } from './utils/validation.js';
 import { rateLimitMove, rateLimitChat, rateLimitLobby, rateLimitNickname } from './middleware/rateLimiter.js';
-import DOMPurify from 'isomorphic-dompurify';
+// DOMPurify removed - using simple server-side sanitization instead
 import logger, { logGameEvent, logSocketEvent, logSecurityEvent } from './utils/logger.js';
 
 // Create HTTP server

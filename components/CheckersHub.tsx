@@ -69,13 +69,13 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
       // Pass existing playerId for reconnection if available
       await checkersWebSocketService.setNickname(nick.trim(), playerId);
       // The nickname will be set when we receive NICKNAME_SET message
-      // If no response after 5 seconds, show error
+      // If no response after 40 seconds, show error (longer for Render cold starts)
       timeoutRef.current = setTimeout(() => {
         const wsUrl = import.meta.env.VITE_WS_URL || 'not set';
-        setError(`Server did not respond. Check: 1) VITE_WS_URL is set in Vercel (currently: ${wsUrl}), 2) WebSocket server is running on Railway/Render, 3) Server URL is correct.`);
+        setError(`Server did not respond after 40s. This might be a Render cold start (free tier takes ~30s to wake up). Check: 1) VITE_WS_URL is set in Vercel (currently: ${wsUrl}), 2) WebSocket server is running on Render, 3) ALLOWED_ORIGINS includes your Vercel domain, 4) Try refreshing - first connection may take longer.`);
         setLoading(false);
         timeoutRef.current = null;
-      }, 5000);
+      }, 40000); // 40 seconds for Render cold starts
     } catch (error: any) {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
@@ -83,7 +83,15 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
       }
       const errorMsg = error.message || 'Failed to connect to server';
       const wsUrl = import.meta.env.VITE_WS_URL || 'not set';
-      setError(`Connection failed: ${errorMsg}. Check VITE_WS_URL in Vercel (currently: ${wsUrl}) and ensure the WebSocket server is running.`);
+      
+      // Provide helpful error message based on error type
+      let detailedError = `Connection failed: ${errorMsg}. `;
+      if (errorMsg.includes('timeout')) {
+        detailedError += `This might be a Render cold start (free tier takes ~30s to wake up). `;
+      }
+      detailedError += `Check: 1) VITE_WS_URL in Vercel (currently: ${wsUrl}), 2) Server is running on Render, 3) ALLOWED_ORIGINS includes your Vercel domain, 4) Try refreshing - first connection may take longer.`;
+      
+      setError(detailedError);
       setLoading(false);
     }
   };
@@ -249,6 +257,30 @@ export const CheckersHub: React.FC<CheckersHubProps> = ({ onNicknameSet, onGameS
                 'Start Playing'
               )}
             </Button>
+            
+            {/* Offline Mode - No Server Needed */}
+            <div className="pt-3 border-t border-slate-700">
+              <p className="text-xs sm:text-sm text-slate-400 text-center mb-3">
+                Or play offline against AI (no server needed)
+              </p>
+              <Button
+                onClick={() => {
+                  // Generate a unique match ID for offline games
+                  const offlineMatchId = 'offline-' + Date.now();
+                  // Create initial board
+                  const initialBoard = createInitialBoard();
+                  // Player always plays as red in offline mode
+                  // Set a default nickname for offline mode
+                  const offlineNickname = nickname.trim() || 'Player';
+                  onNicknameSet(offlineNickname, 'offline-player-' + Date.now());
+                  onGameStart(offlineMatchId, 'red', initialBoard);
+                }}
+                variant="secondary"
+                className="w-full text-base sm:text-lg py-3"
+              >
+                🎮 Start Offline Game (No Server)
+              </Button>
+            </div>
             
             {lastUsedNickname && lastUsedNickname.trim() !== '' && (
               <div className="flex items-center justify-between px-3 py-2 bg-slate-700/50 rounded-lg border border-slate-600">

@@ -100,6 +100,7 @@ const CheckersSquare = React.memo<CheckersSquareProps>(({
       }}
       onClick={(e) => {
         // Always allow clicks - drag handlers will check if we actually dragged
+        console.log('🔴 CheckersSquare onClick fired for boardIndex:', boardIndex);
         onClick(e, boardIndex);
       }}
       className={`${colorClass} aspect-square flex items-center justify-center transition-all active:scale-95 sm:hover:scale-105 border-2 touch-manipulation ${
@@ -187,6 +188,8 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       const initialState = offlineGameServiceRef.current.getState();
       // Sync initial state with component state
       setBoard(initialState.board);
+      // CRITICAL: Initialize turn ref immediately
+      currentTurnRef.current = initialState.currentTurn;
       setCurrentTurn(initialState.currentTurn);
       setCapturesRed(initialState.capturesRed);
       setCapturesBlack(initialState.capturesBlack);
@@ -200,6 +203,42 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   const [currentTurn, setCurrentTurn] = useState<Color>('red');
   const [selectedSquare, setSelectedSquare] = useState<number | null>(null);
   const [legalMoves, setLegalMoves] = useState<number[]>([]);
+  
+  // Wrapper functions to update both state and refs synchronously
+  const setSelectedSquareWithRef = useCallback((value: number | null | ((prev: number | null) => number | null)) => {
+    if (typeof value === 'function') {
+      setSelectedSquare(prev => {
+        const newValue = value(prev);
+        selectedSquareRef.current = newValue;
+        return newValue;
+      });
+    } else {
+      selectedSquareRef.current = value;
+      setSelectedSquare(value);
+    }
+  }, []);
+  
+  const setLegalMovesWithRef = useCallback((value: number[] | ((prev: number[]) => number[])) => {
+    if (typeof value === 'function') {
+      setLegalMoves(prev => {
+        const newValue = value(prev);
+        legalMovesRef.current = newValue;
+        return newValue;
+      });
+    } else {
+      legalMovesRef.current = value;
+      setLegalMoves(value);
+    }
+  }, []);
+  
+  // Keep refs in sync with state (fallback for any direct setSelectedSquare/setLegalMoves calls)
+  useEffect(() => {
+    selectedSquareRef.current = selectedSquare;
+  }, [selectedSquare]);
+  
+  useEffect(() => {
+    legalMovesRef.current = legalMoves;
+  }, [legalMoves]);
   const [mandatoryCaptures, setMandatoryCaptures] = useState<number[]>([]);
   const [winner, setWinner] = useState<Color | null>(null);
   const [canContinueJump, setCanContinueJump] = useState(false);
@@ -233,6 +272,10 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   const [dragStartPosition, setDragStartPosition] = useState<{ x: number; y: number } | null>(null);
   const [hasDragged, setHasDragged] = useState(false);
   const [pendingMove, setPendingMove] = useState<{ from: number; to: number; board: Board } | null>(null);
+  // Use refs to track current state to avoid stale closures
+  const selectedSquareRef = useRef<number | null>(null);
+  const legalMovesRef = useRef<number[]>([]);
+  const currentTurnRef = useRef<Color>('red'); // CRITICAL: Track turn synchronously
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
   const boardContainerRef = useRef<HTMLDivElement>(null);
   const moveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -315,20 +358,47 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
             playSound('promote');
           }
           
+          // CRITICAL: Update turn state FIRST - this is the source of truth from server
+          // The server sends the correct nextTurn based on whether the jump sequence continues
+          const isNowMyTurn = message.nextTurn === yourColor;
+          // Update ref IMMEDIATELY for synchronous validation checks
+          currentTurnRef.current = message.nextTurn;
           setCurrentTurn(message.nextTurn);
           
-          // Play sound if it's now my turn (opponent just moved)
-          if (message.nextTurn === yourColor && !wasMyTurn) {
+          // Update canContinueJump and continueJumpFrom
+          if (message.canContinueJump !== undefined) {
+            setCanContinueJump(message.canContinueJump);
+          }
+          if (message.continueJumpFrom !== undefined) {
+            setContinueJumpFrom(message.continueJumpFrom);
+          }
+          
+          // Log turn state for debugging
+          console.log('🔄 Turn state updated:', {
+            oldTurn: currentTurn,
+            newTurn: message.nextTurn,
+            canContinueJump: message.canContinueJump,
+            continueJumpFrom: message.continueJumpFrom,
+            wasMyTurn,
+            isNowMyTurn,
+            yourColor
+          });
+          
+          // CRITICAL: If it's not our turn anymore, clear selection immediately
+          // This prevents the user from making moves when it's not their turn
+          if (!isNowMyTurn) {
+            console.log('❌ Not our turn anymore (newTurn:', message.nextTurn, 'yourColor:', yourColor, ') - clearing selection');
+            setSelectedSquare(null);
+            setLegalMoves([]);
+          }
+          
+          // Play sound if it's now my turn (opponent just moved and jump sequence ended)
+          // Only play if it's actually our turn AND we're not continuing a jump
+          if (isNowMyTurn && !wasMyTurn && (message.canContinueJump === undefined || message.canContinueJump === false)) {
             if ('vibrate' in navigator) {
               navigator.vibrate([50, 30, 50]);
             }
           }
-        }
-        if (message.canContinueJump !== undefined) {
-          setCanContinueJump(message.canContinueJump);
-        }
-        if (message.continueJumpFrom !== undefined) {
-          setContinueJumpFrom(message.continueJumpFrom);
         }
         // Always update captures, even if 0
         if (message.capturesRed !== undefined) {
@@ -342,13 +412,21 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         if (message.moveTimeRemaining !== undefined) {
           setMoveTimeRemaining(message.moveTimeRemaining);
         }
-        // Only clear selection if not continuing a jump
-        // Keep legal moves visible until user clicks another piece
+        // CRITICAL: Clear selection when jump sequence ends (canContinueJump becomes false)
+        // This ensures the turn switches correctly and prevents double moves
         if (!message.canContinueJump) {
-          // Clear selected square since piece moved, but keep legal moves visible
-          // They'll be cleared/updated when user selects another piece
+          // Jump sequence ended - clear selection completely
           setSelectedSquare(null);
-          // Don't clear legalMoves - they'll stay visible until user selects another piece
+          setLegalMoves([]);
+          console.log('✅ Jump sequence ended - cleared selection, turn switched to:', message.nextTurn, 'isMyTurn:', message.nextTurn === yourColor);
+        } else {
+          // Still continuing jump - keep selection on continueJumpFrom
+          if (message.continueJumpFrom !== null && message.continueJumpFrom !== undefined) {
+            setSelectedSquare(message.continueJumpFrom);
+            const moves = getCachedLegalMoves(message.continueJumpFrom);
+            setLegalMoves(moves);
+            console.log('🔄 Still continuing jump - updated selection to:', message.continueJumpFrom, 'moves:', moves);
+          }
         }
         setMandatoryCaptures([]);
         setError(null);
@@ -409,7 +487,10 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         // Rematch, reconnection, or rejoin - reset/update game state
         setMatchId(message.matchId);
         setBoard(message.board);
-        setCurrentTurn(message.nextTurn || 'red'); // Use current turn from server
+        // CRITICAL: Initialize turn ref immediately
+        const initialTurn = message.nextTurn || 'red';
+        currentTurnRef.current = initialTurn;
+        setCurrentTurn(initialTurn); // Use current turn from server
         setSelectedSquare(null);
         setLegalMoves([]);
         setWinner(null);
@@ -535,12 +616,16 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         cancelAnimationFrame(dragFrameRef.current);
       }
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nickname, isOffline]);
 
   // Offline move handler
   const handleOfflineMove = useCallback((from: number, to: number, isAIMove: boolean = false) => {
     if (!offlineGameServiceRef.current) return;
 
+    // CRITICAL: Get the current turn BEFORE making the move to log correctly
+    const previousTurn = currentTurnRef.current;
+    
     const result = offlineGameServiceRef.current.makeMove(from, to);
     
     if (!result.success) {
@@ -555,6 +640,13 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
 
     // Update state from offline service
     const newState = offlineGameServiceRef.current.getState();
+    
+    // CRITICAL: Update turn ref IMMEDIATELY before any other updates
+    // This ensures validation checks use the latest turn value synchronously
+    currentTurnRef.current = newState.currentTurn;
+    selectedSquareRef.current = null;
+    legalMovesRef.current = [];
+    
     setBoard(newState.board);
     setCurrentTurn(newState.currentTurn);
     setCanContinueJump(newState.canContinueJump);
@@ -565,6 +657,20 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     setLegalMoves([]);
     setSelectedSquare(null);
     setError(null);
+    
+    // CRITICAL: Log turn state for debugging (use ref for accurate previous turn)
+    console.log('🔄 Offline move completed - Turn switched:', {
+      from,
+      to,
+      isAIMove,
+      previousTurn,
+      newTurn: newState.currentTurn,
+      canContinueJump: newState.canContinueJump,
+      continueJumpFrom: newState.continueJumpFrom,
+      isMyTurn: newState.currentTurn === yourColor,
+      yourColor,
+      refTurn: currentTurnRef.current
+    });
     
     if (isAIMove) {
       playSound('move-opponent');
@@ -581,21 +687,30 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       return;
     }
 
-    // If it's now AI's turn and not continuing a jump, trigger AI move
-    if (newState.currentTurn !== yourColor && !newState.canContinueJump && !isAIMove) {
+    // CRITICAL: Only trigger AI move if:
+    // 1. It's actually the AI's turn (check ref, not state)
+    // 2. We're not continuing a jump sequence
+    // 3. This was a player move (not an AI move)
+    const actualCurrentTurn = currentTurnRef.current;
+    if (actualCurrentTurn !== yourColor && !newState.canContinueJump && !isAIMove) {
+      console.log('🤖 Triggering AI move - turn:', actualCurrentTurn, 'yourColor:', yourColor);
       setTimeout(() => {
         if (!offlineGameServiceRef.current) return;
-        const aiMove = offlineGameServiceRef.current.makeAIMove();
-        if (aiMove) {
-          // Animate AI move
-          setAnimatingPiece({ from: aiMove.from, to: aiMove.to });
-          setTimeout(() => {
-            setAnimatingPiece(null);
-            // Use the ref to get the latest handler and avoid stale closure
-            if (handleOfflineMoveRef.current) {
-              handleOfflineMoveRef.current(aiMove.from, aiMove.to, true);
-            }
-          }, 300);
+        // Double-check turn hasn't changed
+        if (currentTurnRef.current !== yourColor) {
+          const aiMove = offlineGameServiceRef.current.makeAIMove();
+          if (aiMove) {
+            console.log('🤖 AI making move from', aiMove.from, 'to', aiMove.to);
+            // Animate AI move
+            setAnimatingPiece({ from: aiMove.from, to: aiMove.to });
+            setTimeout(() => {
+              setAnimatingPiece(null);
+              // Use the ref to get the latest handler and avoid stale closure
+              if (handleOfflineMoveRef.current) {
+                handleOfflineMoveRef.current(aiMove.from, aiMove.to, true);
+              }
+            }, 300);
+          }
         }
       }, 500); // Small delay for AI "thinking"
     }
@@ -604,17 +719,21 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     if (isAIMove && newState.canContinueJump && newState.continueJumpFrom !== null) {
       setTimeout(() => {
         if (!offlineGameServiceRef.current) return;
-        const aiMove = offlineGameServiceRef.current.makeAIMove();
-        if (aiMove) {
-          // Animate AI move
-          setAnimatingPiece({ from: aiMove.from, to: aiMove.to });
-          setTimeout(() => {
-            setAnimatingPiece(null);
-            // Use the ref to get the latest handler
-            if (handleOfflineMoveRef.current) {
-              handleOfflineMoveRef.current(aiMove.from, aiMove.to, true);
-            }
-          }, 300);
+        // Double-check it's still AI's turn
+        if (currentTurnRef.current !== yourColor) {
+          const aiMove = offlineGameServiceRef.current.makeAIMove();
+          if (aiMove) {
+            console.log('🤖 AI continuing jump from', aiMove.from, 'to', aiMove.to);
+            // Animate AI move
+            setAnimatingPiece({ from: aiMove.from, to: aiMove.to });
+            setTimeout(() => {
+              setAnimatingPiece(null);
+              // Use the ref to get the latest handler
+              if (handleOfflineMoveRef.current) {
+                handleOfflineMoveRef.current(aiMove.from, aiMove.to, true);
+              }
+            }, 300);
+          }
         }
       }, 500);
     }
@@ -950,14 +1069,36 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   }, [board, currentTurn, yourColor, winner, canContinueJump, continueJumpFrom, calculateAllMandatoryCaptures]);
 
   // Auto-select piece and calculate moves when canContinueJump becomes true
+  // CRITICAL: Only auto-select if it's actually our turn AND canContinueJump is true
   useEffect(() => {
-    if (canContinueJump && continueJumpFrom !== null && currentTurn === yourColor) {
-      setSelectedSquare(continueJumpFrom);
+    // CRITICAL: Use ref for synchronous turn check - state might be stale
+    const actualCurrentTurn = currentTurnRef.current;
+    
+    // Only auto-select if:
+    // 1. canContinueJump is true
+    // 2. continueJumpFrom is not null
+    // 3. It's actually our turn (check ref for synchronous validation)
+    if (canContinueJump && continueJumpFrom !== null && actualCurrentTurn === yourColor) {
       const moves = getCachedLegalMoves(continueJumpFrom);
-      setLegalMoves(moves);
-      console.log('Auto-selected piece for continuing jump at', continueJumpFrom, 'with moves:', moves);
+      // Only auto-select if there are actually moves available
+      if (moves.length > 0) {
+        setSelectedSquare(continueJumpFrom);
+        setLegalMoves(moves);
+        console.log('✅ Auto-selected piece for continuing jump at', continueJumpFrom, 'with moves:', moves, 'turn:', actualCurrentTurn);
+      } else {
+        console.log('⚠️ canContinueJump is true but no moves available - turn may have switched. Turn:', actualCurrentTurn, 'yourColor:', yourColor);
+        // Clear selection if no moves - turn probably switched
+        setSelectedSquare(null);
+        setLegalMoves([]);
+      }
+    } else if (!canContinueJump && selectedSquare !== null) {
+      // When canContinueJump becomes false, clear selection
+      // This ensures we don't keep a stale selection when the turn switches
+      console.log('🔄 canContinueJump became false - clearing selection, refTurn:', actualCurrentTurn, 'stateTurn:', currentTurn, 'yourColor:', yourColor);
+      setSelectedSquare(null);
+      setLegalMoves([]);
     }
-  }, [canContinueJump, continueJumpFrom, currentTurn, yourColor, getCachedLegalMoves]);
+  }, [canContinueJump, continueJumpFrom, currentTurn, yourColor, getCachedLegalMoves, selectedSquare]);
 
   // Get board-relative position from client coordinates
   const getBoardRelativePosition = useCallback((clientX: number, clientY: number): { x: number; y: number } | null => {
@@ -970,27 +1111,28 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   }, []);
 
   // Get square index from board-relative position
-  // Improved to work anywhere within the square, accounting for padding
+  // Improved to work anywhere within the square, accounting for padding and edges
   const getSquareFromPosition = useCallback((x: number, y: number): number | null => {
     if (!boardContainerRef.current) return null;
     const rect = boardContainerRef.current.getBoundingClientRect();
     const boardSize = Math.min(rect.width, rect.height);
     const squareSize = boardSize / BOARD_SIZE;
     
-    // Clamp coordinates to board bounds to handle edge cases
-    const clampedX = Math.max(0, Math.min(x, boardSize - 1));
-    const clampedY = Math.max(0, Math.min(y, boardSize - 1));
+    // Use floor to get the square - any point within a square maps to that square
+    // This works for drops anywhere within the square boundaries (including edges)
+    const col = Math.floor(x / squareSize);
+    const row = Math.floor(y / squareSize);
     
-    const col = Math.floor(clampedX / squareSize);
-    const row = Math.floor(clampedY / squareSize);
+    // Clamp to valid board indices
+    const finalCol = Math.max(0, Math.min(BOARD_SIZE - 1, col));
+    const finalRow = Math.max(0, Math.min(BOARD_SIZE - 1, row));
     
-    // Ensure we're within bounds
-    if (row < 0 || row >= BOARD_SIZE || col < 0 || col >= BOARD_SIZE) {
-      return null;
-    }
+    const displayIndex = finalRow * BOARD_SIZE + finalCol;
+    const boardIndex = displayIndexToBoardIndex(displayIndex);
     
-    const displayIndex = row * BOARD_SIZE + col;
-    return displayIndexToBoardIndex(displayIndex);
+    console.log('📍 getSquareFromPosition:', { x, y, col, row, finalCol, finalRow, displayIndex, boardIndex, squareSize });
+    
+    return boardIndex;
   }, []);
 
   // Handle drag start
@@ -999,8 +1141,10 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     if (!piece) return;
     
     const pieceColor = (piece === 'r' || piece === 'R') ? 'red' : 'black';
-    if (pieceColor !== currentTurn) return;
-    if (currentTurn !== yourColor) return;
+    // CRITICAL: Use ref for synchronous turn check
+    const actualCurrentTurn = currentTurnRef.current;
+    if (pieceColor !== actualCurrentTurn) return;
+    if (actualCurrentTurn !== yourColor) return;
     if (winner) return;
 
     // Check if we can continue jump
@@ -1014,9 +1158,9 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
 
     // For click-to-select: immediately select the piece and show legal moves
     // This makes click interaction work even if drag doesn't happen
-    setSelectedSquare(index);
+    setSelectedSquareWithRef(index);
     const moves = getCachedLegalMoves(index);
-    setLegalMoves(moves);
+    setLegalMovesWithRef(moves);
     console.log('Selected piece at', index, 'Legal moves:', moves);
 
     setDraggingPiece({ boardIndex: index, piece });
@@ -1060,6 +1204,19 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       return;
     }
 
+    // CRITICAL: Check if it's our turn before processing drag
+    // Use REF for synchronous check (always up-to-date, no stale closures)
+    const actualCurrentTurn = currentTurnRef.current;
+    if (actualCurrentTurn !== yourColor) {
+      console.log('❌ Drag end - not your turn (refTurn:', actualCurrentTurn, 'stateTurn:', currentTurn, 'yourColor:', yourColor, '), ignoring');
+      setDraggingPiece(null);
+      setDragPosition(null);
+      setDragStartPosition(null);
+      setHasDragged(false);
+      setError('Wait for your turn');
+      return;
+    }
+
     const currentDraggingPiece = draggingPiece;
     const pieceIndex = currentDraggingPiece.boardIndex;
     
@@ -1073,20 +1230,105 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     const pos = getBoardRelativePosition(clientX, clientY);
     if (!pos) {
       // If we can't get position, keep the piece selected with legal moves visible
-      setSelectedSquare(pieceIndex);
+      setSelectedSquareWithRef(pieceIndex);
       const moves = getCachedLegalMoves(pieceIndex);
-      setLegalMoves(moves);
+      setLegalMovesWithRef(moves);
       return;
     }
 
     // Get the square from the drop position - this works anywhere within the square
     const dropIndex = getSquareFromPosition(pos.x, pos.y);
     
-    // If dropped on a different square, try to make the move
-    if (dropIndex !== null && dropIndex !== pieceIndex) {
+    console.log('🟢 handleDragEnd - dropIndex:', dropIndex, 'pieceIndex:', pieceIndex, 'currentTurn:', currentTurn, 'yourColor:', yourColor, 'canContinueJump:', canContinueJump, 'continueJumpFrom:', continueJumpFrom);
+    
+    // CRITICAL: If we must continue a jump, only allow moves from continueJumpFrom
+    if (canContinueJump && continueJumpFrom !== null) {
+      if (pieceIndex !== continueJumpFrom) {
+        console.log('❌ Drag end - must continue jump from', continueJumpFrom, 'but dragged from', pieceIndex);
+        setSelectedSquareWithRef(continueJumpFrom);
+        const moves = getCachedLegalMoves(continueJumpFrom);
+        setLegalMovesWithRef(moves);
+        setError('You must continue your jump from the highlighted piece');
+        return;
+      }
+      // If dragging from continueJumpFrom, check if drop is a legal move
+      if (dropIndex !== null) {
+        const moves = getCachedLegalMoves(continueJumpFrom);
+        if (moves.includes(dropIndex)) {
+          console.log('✅ Drag end - making continued jump from', continueJumpFrom, 'to', dropIndex);
+          // Only do optimistic update for confirmed legal moves
+          const newBoard = [...board];
+          const piece = newBoard[continueJumpFrom];
+          newBoard[continueJumpFrom] = null;
+          newBoard[dropIndex] = piece;
+          
+          // Check for king promotion
+          const { row } = indexToPos(dropIndex);
+          if (piece === 'r' && row === 0) {
+            newBoard[dropIndex] = 'R'; // Promote to king
+          } else if (piece === 'b' && row === BOARD_SIZE - 1) {
+            newBoard[dropIndex] = 'B'; // Promote to king
+          }
+          
+          // Save original board for potential revert
+          setPendingMove({ from: continueJumpFrom, to: dropIndex, board: [...board] });
+          
+          // Update board instantly (no animation for user's own moves)
+          setBoard(newBoard);
+          
+          // Send move to server or handle offline
+          if (isOffline && offlineGameServiceRef.current) {
+            setTimeout(() => {
+              handleOfflineMove(continueJumpFrom, dropIndex);
+            }, 50);
+          } else {
+            setTimeout(() => {
+              checkersWebSocketService.makeMove(matchId, continueJumpFrom, dropIndex);
+            }, 50);
+            
+            setError(null);
+            setMandatoryCaptures([]);
+            // Clear legal moves immediately after making a move
+            setLegalMovesWithRef([]);
+            setSelectedSquareWithRef(null);
+            
+            // Clear any existing timeout
+            if (moveTimeoutRef.current) {
+              clearTimeout(moveTimeoutRef.current);
+            }
+            // Set a timeout to show error if no response
+            moveTimeoutRef.current = setTimeout(() => {
+              setSelectedSquare(current => {
+                if (current === continueJumpFrom) {
+                  console.warn('No response from server after 3 seconds');
+                  setError('No response from server. Check connection.');
+                }
+                return current;
+              });
+              moveTimeoutRef.current = null;
+            }, 3000);
+          }
+          // Move was made
+          return;
+        } else {
+          // Invalid move for continued jump - keep continueJumpFrom selected
+          setSelectedSquareWithRef(continueJumpFrom);
+          setLegalMovesWithRef(moves);
+          setError('You must continue your jump');
+          return;
+        }
+      }
+      return; // If dropIndex is null, just return
+    }
+    
+    // Normal move (not continuing a jump)
+    // If dropped on a different square OR same square, try to make the move
+    if (dropIndex !== null) {
       // Check if it's a valid move - ONLY update board if move is confirmed legal
       const moves = getCachedLegalMoves(pieceIndex);
+      console.log('🟢 handleDragEnd - legal moves for', pieceIndex, ':', moves, 'dropIndex:', dropIndex, 'isLegal:', moves.includes(dropIndex));
       if (moves.includes(dropIndex)) {
+        console.log('✅ Drag end - making move from', pieceIndex, 'to', dropIndex);
         // Only do optimistic update for confirmed legal moves
         const newBoard = [...board];
         const piece = newBoard[pieceIndex];
@@ -1120,8 +1362,8 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           setError(null);
           setMandatoryCaptures([]);
           // Clear legal moves immediately after making a move
-          setLegalMoves([]);
-          setSelectedSquare(null);
+          setLegalMovesWithRef([]);
+          setSelectedSquareWithRef(null);
           
           // Clear any existing timeout
           if (moveTimeoutRef.current) {
@@ -1139,23 +1381,23 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
             moveTimeoutRef.current = null;
           }, 3000);
         }
-        // Move was made - don't reset hasDragged here, it's already reset above
+        // Move was made
         return;
       } else {
         // Invalid move - keep piece selected and legal moves visible (chess.com behavior)
-        setSelectedSquare(pieceIndex);
-        setLegalMoves(moves);
+        setSelectedSquareWithRef(pieceIndex);
+        setLegalMovesWithRef(moves);
         setMandatoryCaptures([]);
         return;
       }
     } else {
       // Dropped on same square or invalid position - keep piece selected with legal moves (chess.com behavior)
-      setSelectedSquare(pieceIndex);
+      setSelectedSquareWithRef(pieceIndex);
       const moves = getCachedLegalMoves(pieceIndex);
-      setLegalMoves(moves);
+      setLegalMovesWithRef(moves);
       return;
     }
-  }, [draggingPiece, getBoardRelativePosition, getSquareFromPosition, getCachedLegalMoves, matchId, board, isOffline, handleOfflineMove, indexToPos]);
+  }, [draggingPiece, currentTurn, yourColor, canContinueJump, continueJumpFrom, getBoardRelativePosition, getSquareFromPosition, getCachedLegalMoves, matchId, board, isOffline, handleOfflineMove, indexToPos]);
 
   // Mouse event handlers for dragging
   useEffect(() => {
@@ -1168,19 +1410,11 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
 
     const handleMouseUp = (e: MouseEvent) => {
       if (draggingPiece) {
-        if (hasDragged) {
-          // We actually dragged - handle drag end
-          // Don't prevent default or stop propagation - let click handler work if needed
-          handleDragEnd(e.clientX, e.clientY);
-        } else {
-          // We didn't drag - it was just a click
-          // Clear dragging state immediately to allow onClick to work
-          setDraggingPiece(null);
-          setDragPosition(null);
-          setDragStartPosition(null);
-          setHasDragged(false);
-          // Don't prevent default or stop propagation - let the click event fire
-        }
+        console.log('🟢 handleMouseUp - draggingPiece exists, hasDragged:', hasDragged);
+        // Always call handleDragEnd - it will handle both drag and click cases
+        // handleDragEnd checks if dropIndex is different from pieceIndex to determine if it's a drag
+        console.log('🟢 Calling handleDragEnd');
+        handleDragEnd(e.clientX, e.clientY);
       }
     };
 
@@ -1231,23 +1465,27 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   }, [draggingPiece, handleDragMove, handleDragEnd]);
 
   const handleSquareClick = useCallback((index: number) => {
-    console.log('handleSquareClick called with index:', index);
+    console.log('🟡 handleSquareClick called with index:', index);
     const piece = board[index];
     const isYourPiece = piece !== null && 
       ((yourColor === 'red' && (piece === 'r' || piece === 'R')) ||
        (yourColor === 'black' && (piece === 'b' || piece === 'B')));
-
-    console.log('Piece:', piece, 'IsYourPiece:', isYourPiece, 'CurrentTurn:', currentTurn, 'YourColor:', yourColor);
 
     if (winner) {
       console.log('Game has winner, ignoring click');
       return;
     }
 
-    if (currentTurn !== yourColor) {
-      console.log('Not your turn');
+    // CRITICAL: Sync refs with state first to get latest values
+    selectedSquareRef.current = selectedSquare;
+    legalMovesRef.current = legalMoves;
+    
+    // CRITICAL: Check if it's our turn - use REF for synchronous check (always up-to-date)
+    // This prevents stale closure issues where currentTurn might be outdated
+    const actualCurrentTurn = currentTurnRef.current;
+    if (actualCurrentTurn !== yourColor) {
+      console.log('❌ Click - not your turn (refTurn:', actualCurrentTurn, 'stateTurn:', currentTurn, 'yourColor:', yourColor, ')');
       setError('Wait for your turn');
-      // Clear error after 3 seconds
       if (errorTimeoutRef.current) {
         clearTimeout(errorTimeoutRef.current);
       }
@@ -1257,141 +1495,102 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       }, 3000);
       return;
     }
+    
+    // CRITICAL: If we must continue a jump, only allow moves from continueJumpFrom
+    if (canContinueJump && continueJumpFrom !== null && index !== continueJumpFrom && !isYourPiece) {
+      // Trying to move to a square, but we must continue from continueJumpFrom
+      console.log('❌ Click - must continue jump from', continueJumpFrom, 'but clicked on', index);
+      setError('You must continue your jump from the highlighted piece');
+      return;
+    }
 
     // Haptic feedback on click
     if ('vibrate' in navigator) {
       navigator.vibrate(10);
     }
 
-    if (canContinueJump && continueJumpFrom !== null) {
-      // If we have the piece selected and click on a legal move, make the move
-      if (selectedSquare === continueJumpFrom) {
+    // Read from refs first (they're updated immediately by wrapper functions)
+    // Then sync with state as fallback (in case refs weren't updated)
+    // Use whichever is more recent
+    const refSelected = selectedSquareRef.current;
+    const refLegalMoves = legalMovesRef.current;
+    
+    // Sync refs with state (in case state was updated but refs weren't)
+    selectedSquareRef.current = selectedSquare;
+    legalMovesRef.current = legalMoves;
+    
+    // Use refs if they have a value, otherwise use state
+    // This ensures we get the most up-to-date value
+    const currentSelected = refSelected !== null && refSelected !== undefined ? refSelected : selectedSquare;
+    const currentLegalMoves = refLegalMoves.length > 0 ? refLegalMoves : legalMoves;
+    
+    console.log('🟡 handleSquareClick state (REFS + STATE):', {
+      piece,
+      isYourPiece,
+      currentTurn,
+      yourColor,
+      selectedSquare: currentSelected, // Best available value
+      legalMoves: currentLegalMoves,   // Best available value
+      winner,
+      refSelectedSquare: refSelected,
+      stateSelectedSquare: selectedSquare,
+      refLegalMoves: refLegalMoves,
+      stateLegalMoves: legalMoves
+    });
+
+    let newSelected: number | null = currentSelected;
+    let newLegalMoves: number[] = currentLegalMoves;
+
+    // CRITICAL: Handle continue jump logic FIRST - use current state values
+    // Sync canContinueJump and continueJumpFrom from state (they might be in closure)
+    const mustContinueJump = canContinueJump && continueJumpFrom !== null;
+    
+    if (mustContinueJump) {
+      console.log('🟡 Continue jump required - continueJumpFrom:', continueJumpFrom, 'clicked index:', index, 'isYourPiece:', isYourPiece);
+      
+      // If clicking on the continueJumpFrom piece, select it and show moves
+      if (index === continueJumpFrom) {
+        newSelected = continueJumpFrom;
+        newLegalMoves = getCachedLegalMoves(continueJumpFrom);
+        setSelectedSquareWithRef(newSelected);
+        setLegalMovesWithRef(newLegalMoves);
+        return;
+      }
+      
+      // If we have continueJumpFrom selected and clicking on a legal move, make the move
+      if (currentSelected === continueJumpFrom) {
         const moves = getCachedLegalMoves(continueJumpFrom);
         if (moves.includes(index)) {
-          // This is a legal move, proceed to make it
-          console.log('Making continued jump from', selectedSquare, 'to', index);
-          if (isOffline && offlineGameServiceRef.current) {
-            handleOfflineMove(selectedSquare, index);
-          } else {
-            checkersWebSocketService.makeMove(matchId, selectedSquare, index);
-            setError(null);
-            setMandatoryCaptures([]);
-            // Clear any existing timeout
-            if (moveTimeoutRef.current) {
-              clearTimeout(moveTimeoutRef.current);
-            }
-            // Set a timeout to show error if no response
-            moveTimeoutRef.current = setTimeout(() => {
-              setSelectedSquare(current => {
-                if (current === selectedSquare) {
-                  console.warn('No response from server after 3 seconds');
-                  setError('No response from server. Check connection.');
-                }
-                return current;
-              });
-              moveTimeoutRef.current = null;
-            }, 3000);
-          }
-          return;
-        } else {
-          // Invalid move - must continue jumping
-          setError('You must continue your jump');
-          return;
-        }
-      }
-      // If clicking on continueJumpFrom, select it
-      if (index === continueJumpFrom) {
-        setSelectedSquare(continueJumpFrom);
-        const moves = getCachedLegalMoves(continueJumpFrom);
-        setLegalMoves(moves);
-        console.log('Selected piece for continuing jump at', continueJumpFrom, 'with moves:', moves);
-        return;
-      }
-      // If clicking on a different piece, show error and auto-select the continuing piece
-      if (isYourPiece && index !== continueJumpFrom) {
-        setError('You must continue your jump from the highlighted piece');
-        // Auto-select the piece that must continue jumping
-        setSelectedSquare(continueJumpFrom);
-        const moves = getCachedLegalMoves(continueJumpFrom);
-        setLegalMoves(moves);
-        return;
-      }
-      // If clicking on empty square or opponent piece, show error
-      setError('You must continue your jump from the highlighted piece');
-      return;
-    }
-
-    if (selectedSquare === null) {
-      if (isYourPiece) {
-        console.log('Selecting piece at', index);
-        setSelectedSquare(index);
-        // Calculate and display legal moves (using cache)
-        const moves = getCachedLegalMoves(index);
-        setLegalMoves(moves);
-        console.log('Selected piece at', index, 'Legal moves:', moves);
-        // No error message if no legal moves, just select the piece
-      } else {
-        console.log('Clicked on empty square or opponent piece, but no piece selected');
-      }
-    } else {
-      if (selectedSquare === index) {
-        // Deselect
-        setSelectedSquare(null);
-        setLegalMoves([]);
-      } else if (isYourPiece) {
-        // Select different piece
-        setSelectedSquare(index);
-        const moves = getCachedLegalMoves(index);
-        setLegalMoves(moves);
-      } else {
-        // Try to move - check if it's a legal move
-        // ONLY update board if move is confirmed legal - no optimistic updates for illegal moves
-        console.log('Attempting move - Selected:', selectedSquare, 'Target:', index, 'Legal moves:', legalMoves);
-        if (legalMoves.length > 0 && legalMoves.includes(index)) {
-          // Move is legal - do optimistic update
-          console.log('Making move from', selectedSquare, 'to', index);
-          console.log('Socket connected?', checkersWebSocketService.isConnected());
-          const fromSquare = selectedSquare; // Capture value for timeout check
-          
-          // Optimistically update board instantly (chess.com style) - ONLY for legal moves
+          console.log('✅ Making continued jump from', continueJumpFrom, 'to', index);
+          // Optimistically update board
           const newBoard = [...board];
-          const piece = newBoard[selectedSquare];
-          newBoard[selectedSquare] = null;
-          newBoard[index] = piece;
+          const pieceToMove = newBoard[continueJumpFrom];
+          newBoard[continueJumpFrom] = null;
+          newBoard[index] = pieceToMove;
           
           // Check for king promotion
           const { row } = indexToPos(index);
-          if (piece === 'r' && row === 0) {
-            newBoard[index] = 'R'; // Promote to king
-          } else if (piece === 'b' && row === BOARD_SIZE - 1) {
-            newBoard[index] = 'B'; // Promote to king
+          if (pieceToMove === 'r' && row === 0) {
+            newBoard[index] = 'R';
+          } else if (pieceToMove === 'b' && row === BOARD_SIZE - 1) {
+            newBoard[index] = 'B';
           }
           
-          // Save original board for potential revert
-          setPendingMove({ from: selectedSquare, to: index, board: [...board] });
-          
-          // Update board instantly (no animation for user's own moves)
+          setPendingMove({ from: continueJumpFrom, to: index, board: [...board] });
           setBoard(newBoard);
           
-          // Send move to server or handle offline
           if (isOffline && offlineGameServiceRef.current) {
-            handleOfflineMove(selectedSquare, index);
+            handleOfflineMove(continueJumpFrom, index);
           } else {
-            checkersWebSocketService.makeMove(matchId, selectedSquare, index);
+            checkersWebSocketService.makeMove(matchId, continueJumpFrom, index);
             setError(null);
             setMandatoryCaptures([]);
-            // Clear legal moves immediately after making a move
-            setLegalMoves([]);
-            setSelectedSquare(null);
-            // Clear any existing timeout
             if (moveTimeoutRef.current) {
               clearTimeout(moveTimeoutRef.current);
             }
-            // Set a timeout to show error if no response
             moveTimeoutRef.current = setTimeout(() => {
-              // Check if the square is still selected (move wasn't processed)
               setSelectedSquare(current => {
-                if (current === fromSquare) {
+                if (current === continueJumpFrom) {
                   console.warn('No response from server after 3 seconds');
                   setError('No response from server. Check connection.');
                 }
@@ -1400,22 +1599,120 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
               moveTimeoutRef.current = null;
             }, 3000);
           }
-        } else if (legalMoves.length === 0) {
-          console.log('No legal moves available');
-          // Just clear selection, no error message
-          setSelectedSquare(null);
-          setLegalMoves([]);
-          setMandatoryCaptures([]);
+          setSelectedSquareWithRef(null);
+          setLegalMovesWithRef([]);
+          return;
         } else {
-          // Invalid move - just clear selection and legal moves, no error message
-          console.log('Invalid move - clearing selection');
-          setSelectedSquare(null);
-          setLegalMoves([]);
-          setMandatoryCaptures([]);
+          setError('You must continue your jump');
+          // Keep continueJumpFrom selected
+          setSelectedSquareWithRef(continueJumpFrom);
+          setLegalMovesWithRef(getCachedLegalMoves(continueJumpFrom));
+          return;
         }
       }
+      
+      // If clicking on any other piece or square, show error and auto-select continueJumpFrom
+      console.log('❌ Must continue jump from', continueJumpFrom, 'but clicked on', index);
+      setError('You must continue your jump from the highlighted piece');
+      newSelected = continueJumpFrom;
+      newLegalMoves = getCachedLegalMoves(continueJumpFrom);
+      setSelectedSquareWithRef(newSelected);
+      setLegalMovesWithRef(newLegalMoves);
+      return; // CRITICAL: Return early to prevent selecting other pieces
     }
-  }, [board, selectedSquare, yourColor, currentTurn, canContinueJump, continueJumpFrom, winner, matchId, legalMoves, getCachedLegalMoves, calculateAllMandatoryCaptures]);
+
+    // Main click logic using CURRENT state values from refs
+    // If clicking on your own piece, check if we must continue a jump first
+    if (isYourPiece) {
+      // CRITICAL: If we must continue a jump, only allow selecting continueJumpFrom
+      if (canContinueJump && continueJumpFrom !== null && index !== continueJumpFrom) {
+        console.log('❌ Must continue jump from', continueJumpFrom, 'but clicked on', index);
+        setError('You must continue your jump from the highlighted piece');
+        // Auto-select the piece that must continue jumping
+        setSelectedSquareWithRef(continueJumpFrom);
+        const moves = getCachedLegalMoves(continueJumpFrom);
+        setLegalMovesWithRef(moves);
+        return;
+      }
+      
+      console.log('Clicking on your piece at', index, '- selecting and showing moves');
+      newSelected = index;
+      newLegalMoves = getCachedLegalMoves(index);
+      console.log('Selected piece at', index, 'Legal moves:', newLegalMoves);
+      setSelectedSquareWithRef(newSelected);
+      setLegalMovesWithRef(newLegalMoves);
+      return; // Early return - we've handled the click
+    }
+    
+    // If clicking on empty square or opponent piece, check if we have a selection
+    if (currentSelected === null) {
+      console.log('Clicked on empty square or opponent piece, but no piece selected');
+      return; // Nothing to do
+    } else {
+      // We have a selection - try to make a move
+      // Try to move - check if it's a legal move using CURRENT legalMoves from ref
+      console.log('Attempting move - Selected:', currentSelected, 'Target:', index, 'Legal moves:', currentLegalMoves);
+      if (currentLegalMoves.length > 0 && currentLegalMoves.includes(index)) {
+        // Move is legal - do optimistic update
+        console.log('✅ Making move from', currentSelected, 'to', index);
+        const fromSquare = currentSelected;
+        
+        // Optimistically update board instantly
+        const newBoard = [...board];
+        const pieceToMove = newBoard[currentSelected];
+        newBoard[currentSelected] = null;
+        newBoard[index] = pieceToMove;
+        
+        // Check for king promotion
+        const { row } = indexToPos(index);
+        if (pieceToMove === 'r' && row === 0) {
+          newBoard[index] = 'R';
+        } else if (pieceToMove === 'b' && row === BOARD_SIZE - 1) {
+          newBoard[index] = 'B';
+        }
+        
+        // Save original board for potential revert
+        setPendingMove({ from: currentSelected, to: index, board: [...board] });
+        
+        // Update board instantly
+        setBoard(newBoard);
+        
+        // Send move to server or handle offline
+        if (isOffline && offlineGameServiceRef.current) {
+          handleOfflineMove(currentSelected, index);
+        } else {
+          checkersWebSocketService.makeMove(matchId, currentSelected, index);
+          setError(null);
+          setMandatoryCaptures([]);
+          if (moveTimeoutRef.current) {
+            clearTimeout(moveTimeoutRef.current);
+          }
+          moveTimeoutRef.current = setTimeout(() => {
+            setSelectedSquare(current => {
+              if (current === fromSquare) {
+                console.warn('No response from server after 3 seconds');
+                setError('No response from server. Check connection.');
+              }
+              return current;
+            });
+            moveTimeoutRef.current = null;
+          }, 3000);
+        }
+        // Clear selection and moves after making move
+        setSelectedSquareWithRef(null);
+        setLegalMovesWithRef([]);
+      } else if (currentLegalMoves.length === 0) {
+        console.log('No legal moves available');
+        setSelectedSquareWithRef(null);
+        setLegalMovesWithRef([]);
+        setMandatoryCaptures([]);
+      } else {
+        // Invalid move - keep selection and moves visible (chess.com behavior)
+        console.log('Invalid move - keeping selection');
+        // Don't clear - keep piece selected with moves visible
+      }
+    }
+  }, [board, currentTurn, yourColor, winner, canContinueJump, continueJumpFrom, matchId, isOffline, handleOfflineMove, getCachedLegalMoves, indexToPos, checkersWebSocketService, setPendingMove, setBoard, setError, setMandatoryCaptures]);
 
   const handleRematch = () => {
     // Use current matchId from state
@@ -1500,22 +1797,33 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   }, [handleDragStart]);
 
   const handleSquareClickWrapper = useCallback((e: React.MouseEvent, boardIndex: number) => {
-    // Clear dragging state first to ensure clean state for click handling
-    setDraggingPiece(null);
-    setDragPosition(null);
-    setDragStartPosition(null);
-    setHasDragged(false);
+    // IMPORTANT: Don't clear drag state here - it's already cleared in handleMouseUp
+    // Just read the current state (which should have been set by handleDragStart)
     
-    // If we have a selected square, it means either:
-    // 1. We clicked on a piece (normal click)
-    // 2. We dragged but didn't make a move (drag released on same/invalid square)
-    // In both cases, we should allow the click handler to work for click-to-move
-    // Only skip if we just made a move (selectedSquare would be null and hasDragged true)
-    // But since we just reset hasDragged above, we can always process the click
+    // Sync refs with state first (in case state was updated but refs weren't synced yet)
+    // This ensures we have the latest values even for fast clicks
+    selectedSquareRef.current = selectedSquare;
+    legalMovesRef.current = legalMoves;
     
-    console.log('Square clicked - boardIndex:', boardIndex, 'Piece:', board[boardIndex], 'Selected:', selectedSquare, 'Legal moves:', legalMoves);
+    // Use refs to get current state values (always up-to-date)
+    const currentSelected = selectedSquareRef.current;
+    const currentLegalMoves = legalMovesRef.current;
+    
+    console.log('🔵 handleSquareClickWrapper called', {
+      boardIndex,
+      piece: board[boardIndex],
+      selectedSquare: currentSelected, // From ref - synced with state
+      legalMoves: currentLegalMoves,   // From ref - synced with state
+      stateSelectedSquare: selectedSquare, // Also log state for comparison
+      stateLegalMoves: legalMoves,
+      hasDragged,
+      draggingPiece: draggingPiece?.boardIndex
+    });
+    
+    // Always process the click - the handleSquareClick will handle the logic
+    console.log('🔵 Calling handleSquareClick with boardIndex:', boardIndex);
     handleSquareClick(boardIndex);
-  }, [board, selectedSquare, legalMoves, handleSquareClick]);
+  }, [board, selectedSquare, legalMoves, hasDragged, draggingPiece, handleSquareClick]);
 
   const renderSquare = useCallback((displayIndex: number) => {
     // Convert display index to board index

@@ -1,6 +1,7 @@
 // Validation utilities for input sanitization and validation
 
-import DOMPurify from 'isomorphic-dompurify';
+// Note: DOMPurify removed due to jsdom compatibility issues in Node.js
+// Using simple regex-based sanitization for server-side
 
 /**
  * Validate UUID format
@@ -48,18 +49,23 @@ export function isValidNickname(nickname: string): boolean {
 }
 
 /**
- * Sanitize text content - strips all HTML tags
+ * Sanitize text content - strips all HTML tags and dangerous characters
+ * Server-side implementation without DOMPurify to avoid jsdom issues
  */
 export function sanitizeText(text: string, maxLength: number = 200): string {
   if (!text || typeof text !== 'string') {
     return '';
   }
   
-  // Strip all HTML tags and attributes
-  const sanitized = DOMPurify.sanitize(
-    text.trim().substring(0, maxLength),
-    { ALLOWED_TAGS: [], ALLOWED_ATTR: [] } // Strip all HTML
-  );
+  // Strip all HTML tags using regex (safe for server-side)
+  let sanitized = text
+    .trim()
+    .substring(0, maxLength)
+    .replace(/<[^>]*>/g, '') // Remove all HTML tags
+    .replace(/&[#\w]+;/g, '') // Remove HTML entities
+    .replace(/[<>\"'&]/g, '') // Remove dangerous characters
+    .replace(/\s+/g, ' ') // Normalize whitespace
+    .trim();
   
   return sanitized;
 }
