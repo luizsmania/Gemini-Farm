@@ -5,6 +5,20 @@ import { Board, Piece, Color } from '../types/checkers';
 export const BOARD_SIZE = 8;
 export const BOARD_ARRAY_SIZE = 64;
 
+// A capture available to the piece standing on `from`
+export interface CaptureMove {
+  to: number; // landing square
+  captured: number; // index of the single piece being jumped
+}
+
+// A fully legal move for the side to move
+export interface MoveCandidate {
+  from: number;
+  to: number;
+  captured: number[]; // indices of captured pieces (empty for quiet moves)
+}
+
+
 // Initialize a standard checkers board
 export function createInitialBoard(): Board {
   const board: Board = new Array(BOARD_ARRAY_SIZE).fill(null);
@@ -46,7 +60,7 @@ export function indexToPos(index: number): { row: number; col: number } {
 // Get piece color
 export function getPieceColor(piece: Piece): Color | null {
   if (piece === null) return null;
-  return piece.toLowerCase() === 'r' ? 'red' : 'black';
+  return piece === 'r' || piece === 'R' ? 'red' : 'black';
 }
 
 // Check if piece is a king
@@ -179,16 +193,16 @@ function findCaptures(board: Board, position: number, currentTurn: Color, isKing
       }
     }
   } else {
-    // Regular pieces can only capture 2 squares away
-    const directions = currentTurn === 'red'
-      ? [
-          { rowDir: -2, colDir: -2 }, // Up-left
-          { rowDir: -2, colDir: 2 },  // Up-right
-        ]
-      : [
-          { rowDir: 2, colDir: -2 },  // Down-left
-          { rowDir: 2, colDir: 2 },   // Down-right
-        ];
+    // Regular pieces can only capture 2 squares away.
+    // For multi-jump continuation we check all 4 directions — a piece can chain
+    // captures in any direction. Forward-only restriction applies to regular moves,
+    // not to captures mid-sequence (standard checkers rules).
+    const directions = [
+      { rowDir: -2, colDir: -2 }, // Up-left
+      { rowDir: -2, colDir: 2 },  // Up-right
+      { rowDir: 2, colDir: -2 },  // Down-left
+      { rowDir: 2, colDir: 2 },   // Down-right
+    ];
     
     for (const { rowDir, colDir } of directions) {
       const newRow = row + rowDir;
@@ -486,4 +500,3 @@ export function checkGameOver(board: Board, currentTurn: Color): { gameOver: boo
   
   return { gameOver: false, winner: null };
 }
-

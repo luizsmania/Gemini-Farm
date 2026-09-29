@@ -112,15 +112,25 @@ export class OfflineGameService {
       }
     }
 
-    // Check if piece can continue jumping
-    const canContinue = canContinueJump(result.newBoard, to, this.gameState.currentTurn);
+    // Check if piece can continue jumping.
+    // Critical: Only continue turn if current move was a capture AND more captures are available
+    // A piece that just got promoted to king CANNOT continue jumping — turn ends.
+    if (result.captures.length > 0 && !result.promoted) {
+      // Current move captured a piece - check if more captures available
+      const canContinue = canContinueJump(result.newBoard, to, this.gameState.currentTurn);
 
-    if (canContinue) {
-      // Must continue jumping
-      this.gameState.canContinueJump = true;
-      this.gameState.continueJumpFrom = to;
+      if (canContinue) {
+        // Must continue jumping
+        this.gameState.canContinueJump = true;
+        this.gameState.continueJumpFrom = to;
+      } else {
+        // No more captures available - end turn
+        this.gameState.canContinueJump = false;
+        this.gameState.continueJumpFrom = null;
+        this.gameState.currentTurn = this.gameState.currentTurn === 'red' ? 'black' : 'red';
+      }
     } else {
-      // Turn ends, switch to opponent
+      // No capture in this move or piece was promoted - always switch turn
       this.gameState.canContinueJump = false;
       this.gameState.continueJumpFrom = null;
       this.gameState.currentTurn = this.gameState.currentTurn === 'red' ? 'black' : 'red';
@@ -210,4 +220,3 @@ export class OfflineGameService {
     };
   }
 }
-

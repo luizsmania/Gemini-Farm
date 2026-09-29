@@ -40,8 +40,6 @@ interface CheckersSquareProps {
   isLegalMove: boolean;
   isMandatoryCapture: boolean;
   isLastMoveSquare: boolean;
-  isAnimatingFrom: boolean;
-  isAnimatingTo: boolean;
   canCapture: boolean;
   isDragging: boolean;
   colorClass: string;
@@ -64,8 +62,6 @@ const CheckersSquare = React.memo<CheckersSquareProps>(({
   isLegalMove,
   isMandatoryCapture,
   isLastMoveSquare,
-  isAnimatingFrom,
-  isAnimatingTo,
   canCapture,
   isDragging,
   colorClass,
@@ -103,7 +99,7 @@ const CheckersSquare = React.memo<CheckersSquareProps>(({
         console.log('🔴 CheckersSquare onClick fired for boardIndex:', boardIndex);
         onClick(e, boardIndex);
       }}
-      className={`${colorClass} aspect-square flex items-center justify-center transition-all active:scale-95 sm:hover:scale-105 border-2 touch-manipulation ${
+      className={`${colorClass} aspect-square flex items-center justify-center transition-colors duration-150 active:scale-95 sm:hover:scale-105 border-2 touch-manipulation ${
         piece && !draggingPiece && currentTurn === yourColor && ((piece === 'r' || piece === 'R') ? 'red' : 'black') === yourColor
           ? 'cursor-grab active:cursor-grabbing' 
           : 'cursor-pointer'
@@ -113,13 +109,10 @@ const CheckersSquare = React.memo<CheckersSquareProps>(({
         isLastMoveSquare ? 'border-purple-400' : 
         'border-transparent'
       }`}
-      style={{ position: 'relative', zIndex: isAnimatingTo ? 9998 : isDragging ? 9999 : 1 }}
+      style={{ position: 'relative', zIndex: isDragging ? 9999 : 1 }}
     >
       {piece && (() => {
         const display = getPieceDisplay(piece);
-        if (isAnimatingFrom || isAnimatingTo) {
-          return null;
-        }
         if (isDragging) {
           return null;
         }
@@ -155,8 +148,6 @@ const CheckersSquare = React.memo<CheckersSquareProps>(({
     prevProps.isLegalMove === nextProps.isLegalMove &&
     prevProps.isMandatoryCapture === nextProps.isMandatoryCapture &&
     prevProps.isLastMoveSquare === nextProps.isLastMoveSquare &&
-    prevProps.isAnimatingFrom === nextProps.isAnimatingFrom &&
-    prevProps.isAnimatingTo === nextProps.isAnimatingTo &&
     prevProps.canCapture === nextProps.canCapture &&
     prevProps.isDragging === nextProps.isDragging &&
     prevProps.colorClass === nextProps.colorClass &&
@@ -246,6 +237,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [opponentDisconnected, setOpponentDisconnected] = useState(false);
   const [showRematch, setShowRematch] = useState(false);
+  const [rematchRequested, setRematchRequested] = useState(false);
   const [chatMessages, setChatMessages] = useState<Array<{ senderNickname: string; message: string; timestamp: number; isOwn: boolean }>>(() => {
     // Load chat history from localStorage on mount
     const savedChat = localStorage.getItem(`chat_${initialMatchId}`);
@@ -263,7 +255,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   const [isLeaving, setIsLeaving] = useState(false);
   const [leaveTimeRemaining, setLeaveTimeRemaining] = useState<number>(0);
   const [lastMove, setLastMove] = useState<{ from: number; to: number } | null>(null);
-  const [animatingPiece, setAnimatingPiece] = useState<{ from: number; to: number } | null>(null);
+  const [flashSquares, setFlashSquares] = useState<Set<number>>(new Set());
   const [capturesRed, setCapturesRed] = useState<number>(0);
   const [capturesBlack, setCapturesBlack] = useState<number>(0);
   const [moveTimeRemaining, setMoveTimeRemaining] = useState<number>(45);
@@ -272,10 +264,17 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   const [dragStartPosition, setDragStartPosition] = useState<{ x: number; y: number } | null>(null);
   const [hasDragged, setHasDragged] = useState(false);
   const [pendingMove, setPendingMove] = useState<{ from: number; to: number; board: Board } | null>(null);
+
+  const flashMove = useCallback((from: number, to: number) => {
+    setFlashSquares(new Set([from, to]));
+    setTimeout(() => setFlashSquares(new Set()), 600);
+  }, []);
+
   // Use refs to track current state to avoid stale closures
   const selectedSquareRef = useRef<number | null>(null);
   const legalMovesRef = useRef<number[]>([]);
   const currentTurnRef = useRef<Color>('red'); // CRITICAL: Track turn synchronously
+  const pendingMoveRef = useRef<{ from: number; to: number; board: Board } | null>(null); // CRITICAL: Track pending move in ref for event handlers
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
   const boardContainerRef = useRef<HTMLDivElement>(null);
   const moveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -300,12 +299,8 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         // Set animation if we have from and to (only for opponent moves, not user's own moves)
         // User's own moves are already shown instantly via optimistic update
         if (message.from !== undefined && message.to !== undefined && !wasOurMove) {
-          setAnimatingPiece({ from: message.from, to: message.to });
+          flashMove(message.from, message.to);
           setLastMove({ from: message.from, to: message.to });
-          // Clear animation after it completes - faster 100ms animation
-          setTimeout(() => {
-            setAnimatingPiece(null);
-          }, 100);
         } else if (message.from !== undefined && message.to !== undefined) {
           // Our move - just update last move, no animation needed
           setLastMove({ from: message.from, to: message.to });
@@ -327,6 +322,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         // Clear pending move since server confirmed it
         if (wasOurMove) {
           setPendingMove(null);
+          pendingMoveRef.current = null;
         }
         
         setBoard(message.board);
@@ -437,16 +433,18 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
 
     const handleMoveRejected = (message: ServerMessage) => {
       console.log('handleMoveRejected called with:', message);
-      if (message.type === 'MOVE_REJECTED' && message.reason) {
+      if (message.type === 'MOVE_REJECTED') {
         console.error('Move rejected:', message.reason);
         
-        // Revert optimistic update
-        if (pendingMove) {
-          setBoard(pendingMove.board);
+        // Revert optimistic update using ref for guaranteed access to current pending move
+        if (pendingMoveRef.current) {
+          console.log('Reverting piece from', pendingMoveRef.current.from, 'to', pendingMoveRef.current.to);
+          setBoard(pendingMoveRef.current.board);
           setPendingMove(null);
+          pendingMoveRef.current = null;
         }
         
-        setError(message.reason);
+        setError(message.reason || 'Invalid move');
         setSelectedSquare(null);
         setLegalMoves([]);
         setMandatoryCaptures([]);
@@ -498,8 +496,8 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         setContinueJumpFrom(null);
         setError(null);
         setShowRematch(false);
+        setRematchRequested(false);
         setLastMove(null);
-        setAnimatingPiece(null);
         setIsLeaving(false); // Cancel leave state if rejoining
         setLeaveTimeRemaining(0);
         // Play game start sound
@@ -619,6 +617,12 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nickname, isOffline]);
 
+  // Sync pendingMoveRef whenever pendingMove changes
+  // This ensures event handlers always have access to the current pending move
+  useEffect(() => {
+    pendingMoveRef.current = pendingMove;
+  }, [pendingMove]);
+
   // Offline move handler
   const handleOfflineMove = useCallback((from: number, to: number, isAIMove: boolean = false) => {
     if (!offlineGameServiceRef.current) return;
@@ -630,10 +634,12 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     
     if (!result.success) {
       setError(result.error || 'Invalid move');
-      // Revert optimistic update if pending (only for player moves, not AI)
-      if (pendingMove && !isAIMove) {
-        setBoard(pendingMove.board);
+      // Revert optimistic update if pending (only for player moves, not AI) using ref for guaranteed access
+      if (pendingMoveRef.current && !isAIMove) {
+        console.log('Offline: Reverting piece from', pendingMoveRef.current.from, 'to', pendingMoveRef.current.to);
+        setBoard(pendingMoveRef.current.board);
         setPendingMove(null);
+        pendingMoveRef.current = null;
       }
       return;
     }
@@ -654,6 +660,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     setCapturesRed(newState.capturesRed);
     setCapturesBlack(newState.capturesBlack);
     setPendingMove(null);
+    pendingMoveRef.current = null;
     setLegalMoves([]);
     setSelectedSquare(null);
     setError(null);
@@ -701,15 +708,10 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           const aiMove = offlineGameServiceRef.current.makeAIMove();
           if (aiMove) {
             console.log('🤖 AI making move from', aiMove.from, 'to', aiMove.to);
-            // Animate AI move
-            setAnimatingPiece({ from: aiMove.from, to: aiMove.to });
-            setTimeout(() => {
-              setAnimatingPiece(null);
-              // Use the ref to get the latest handler and avoid stale closure
-              if (handleOfflineMoveRef.current) {
-                handleOfflineMoveRef.current(aiMove.from, aiMove.to, true);
-              }
-            }, 300);
+            if (handleOfflineMoveRef.current) {
+              handleOfflineMoveRef.current(aiMove.from, aiMove.to, true);
+            }
+            flashMove(aiMove.from, aiMove.to);
           }
         }
       }, 500); // Small delay for AI "thinking"
@@ -724,15 +726,10 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           const aiMove = offlineGameServiceRef.current.makeAIMove();
           if (aiMove) {
             console.log('🤖 AI continuing jump from', aiMove.from, 'to', aiMove.to);
-            // Animate AI move
-            setAnimatingPiece({ from: aiMove.from, to: aiMove.to });
-            setTimeout(() => {
-              setAnimatingPiece(null);
-              // Use the ref to get the latest handler
-              if (handleOfflineMoveRef.current) {
-                handleOfflineMoveRef.current(aiMove.from, aiMove.to, true);
-              }
-            }, 300);
+            if (handleOfflineMoveRef.current) {
+              handleOfflineMoveRef.current(aiMove.from, aiMove.to, true);
+            }
+            flashMove(aiMove.from, aiMove.to);
           }
         }
       }, 500);
@@ -797,6 +794,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     if (isSelected) return 'bg-yellow-500/50';
     // Mandatory captures should show even if it's also a legal move for selected piece
     if (isMandatoryCapture) return 'bg-blue-500/60 border-2 border-blue-400';
+    if (flashSquares.has(index)) return 'bg-orange-400/70';
     // Don't change background for legal moves - just show dots
     // Highlight last move destination square only
     if (isLastMove) return 'bg-purple-500/40 border-2 border-purple-400';
@@ -1071,34 +1069,21 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   // Auto-select piece and calculate moves when canContinueJump becomes true
   // CRITICAL: Only auto-select if it's actually our turn AND canContinueJump is true
   useEffect(() => {
-    // CRITICAL: Use ref for synchronous turn check - state might be stale
     const actualCurrentTurn = currentTurnRef.current;
-    
-    // Only auto-select if:
-    // 1. canContinueJump is true
-    // 2. continueJumpFrom is not null
-    // 3. It's actually our turn (check ref for synchronous validation)
+
     if (canContinueJump && continueJumpFrom !== null && actualCurrentTurn === yourColor) {
       const moves = getCachedLegalMoves(continueJumpFrom);
-      // Only auto-select if there are actually moves available
       if (moves.length > 0) {
         setSelectedSquare(continueJumpFrom);
         setLegalMoves(moves);
         console.log('✅ Auto-selected piece for continuing jump at', continueJumpFrom, 'with moves:', moves, 'turn:', actualCurrentTurn);
       } else {
         console.log('⚠️ canContinueJump is true but no moves available - turn may have switched. Turn:', actualCurrentTurn, 'yourColor:', yourColor);
-        // Clear selection if no moves - turn probably switched
         setSelectedSquare(null);
         setLegalMoves([]);
       }
-    } else if (!canContinueJump && selectedSquare !== null) {
-      // When canContinueJump becomes false, clear selection
-      // This ensures we don't keep a stale selection when the turn switches
-      console.log('🔄 canContinueJump became false - clearing selection, refTurn:', actualCurrentTurn, 'stateTurn:', currentTurn, 'yourColor:', yourColor);
-      setSelectedSquare(null);
-      setLegalMoves([]);
     }
-  }, [canContinueJump, continueJumpFrom, currentTurn, yourColor, getCachedLegalMoves, selectedSquare]);
+  }, [canContinueJump, continueJumpFrom, yourColor, getCachedLegalMoves]);
 
   // Get board-relative position from client coordinates
   const getBoardRelativePosition = useCallback((clientX: number, clientY: number): { x: number; y: number } | null => {
@@ -1391,10 +1376,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         return;
       }
     } else {
-      // Dropped on same square or invalid position - keep piece selected with legal moves (chess.com behavior)
-      setSelectedSquareWithRef(pieceIndex);
-      const moves = getCachedLegalMoves(pieceIndex);
-      setLegalMovesWithRef(moves);
+      // Dropped on same square — already selected from handleDragStart, nothing to do
       return;
     }
   }, [draggingPiece, currentTurn, yourColor, canContinueJump, continueJumpFrom, getBoardRelativePosition, getSquareFromPosition, getCachedLegalMoves, matchId, board, isOffline, handleOfflineMove, indexToPos]);
@@ -1496,9 +1478,9 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
       return;
     }
     
-    // CRITICAL: If we must continue a jump, only allow moves from continueJumpFrom
-    if (canContinueJump && continueJumpFrom !== null && index !== continueJumpFrom && !isYourPiece) {
-      // Trying to move to a square, but we must continue from continueJumpFrom
+    // CRITICAL: If we must continue a jump, only block clicking another one of your own pieces
+    if (canContinueJump && continueJumpFrom !== null && index !== continueJumpFrom && isYourPiece) {
+      // Trying to move a different piece, but we must continue from continueJumpFrom
       console.log('❌ Click - must continue jump from', continueJumpFrom, 'but clicked on', index);
       setError('You must continue your jump from the highlighted piece');
       return;
@@ -1624,6 +1606,9 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     // Main click logic using CURRENT state values from refs
     // If clicking on your own piece, check if we must continue a jump first
     if (isYourPiece) {
+      // If clicking the already-selected piece, do nothing
+      if (currentSelected === index) return;
+
       // CRITICAL: If we must continue a jump, only allow selecting continueJumpFrom
       if (canContinueJump && continueJumpFrom !== null && index !== continueJumpFrom) {
         console.log('❌ Must continue jump from', continueJumpFrom, 'but clicked on', index);
@@ -1715,9 +1700,35 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   }, [board, currentTurn, yourColor, winner, canContinueJump, continueJumpFrom, matchId, isOffline, handleOfflineMove, getCachedLegalMoves, indexToPos, checkersWebSocketService, setPendingMove, setBoard, setError, setMandatoryCaptures]);
 
   const handleRematch = () => {
+    if (isOffline) {
+      // Reset offline game state for a new local match
+      if (!offlineGameServiceRef.current) {
+        offlineGameServiceRef.current = new OfflineGameService();
+      } else {
+        offlineGameServiceRef.current = new OfflineGameService();
+      }
+      const initialState = offlineGameServiceRef.current.getState();
+      setBoard(initialState.board);
+      currentTurnRef.current = initialState.currentTurn;
+      setCurrentTurn(initialState.currentTurn);
+      setCapturesRed(initialState.capturesRed);
+      setCapturesBlack(initialState.capturesBlack);
+      setWinner(null);
+      setCanContinueJump(false);
+      setContinueJumpFrom(null);
+      setSelectedSquare(null);
+      setLegalMoves([]);
+      setError(null);
+      setShowRematch(false);
+      setRematchRequested(false);
+      setLastMove(null);
+      return;
+    }
+
     // Use current matchId from state
     checkersWebSocketService.acceptRematch(matchId);
-    setShowRematch(false);
+    setShowRematch(true);
+    setRematchRequested(true);
   };
 
   const handleLeave = () => {
@@ -1834,8 +1845,6 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     const isMandatoryCapture = mandatoryCaptures.includes(boardIndex);
     // Show both from and to squares of the absolute last move (either mine or opponent's)
     const isLastMoveSquare = lastMove !== null && (lastMove.from === boardIndex || lastMove.to === boardIndex);
-    const isAnimatingFrom = animatingPiece !== null && animatingPiece.from === boardIndex;
-    const isAnimatingTo = animatingPiece !== null && animatingPiece.to === boardIndex;
     // Check if this piece can capture (for visual hint)
     const canCapture = piecesWithCaptures.has(boardIndex);
     
@@ -1853,8 +1862,6 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
         isLegalMove={isLegalMove}
         isMandatoryCapture={isMandatoryCapture}
         isLastMoveSquare={isLastMoveSquare}
-        isAnimatingFrom={isAnimatingFrom}
-        isAnimatingTo={isAnimatingTo}
         canCapture={canCapture}
         isDragging={isDragging}
         colorClass={colorClass}
@@ -1874,7 +1881,6 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
     legalMoves,
     mandatoryCaptures,
     lastMove,
-    animatingPiece,
     piecesWithCaptures,
     draggingPiece,
     currentTurn,
@@ -1894,12 +1900,12 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
   const currentPlayerDisplayName = nickname || 'You';
 
   return (
-    <div className="h-screen bg-slate-900 p-1 sm:p-2 overflow-hidden flex flex-col">
-      <div className="max-w-7xl mx-auto w-full h-full flex flex-col">
+    <div className="bg-slate-900 p-1 sm:p-2 overflow-hidden flex flex-col" style={{ height: '100dvh' }}>
+      <div className="max-w-7xl mx-auto w-full h-full flex flex-col min-h-0 overflow-hidden" style={{ height: '100%' }}>
         {/* Desktop Layout: Board Left, Chat Right */}
-        <div className="flex flex-col lg:flex-row gap-2 flex-1 min-h-0 overflow-hidden">
+        <div className="flex flex-col lg:flex-row gap-2 flex-1 min-h-0 overflow-hidden" style={{ minHeight: 0 }}>
           {/* Left Section: Board Area */}
-          <div className="flex-1 lg:flex-[0_0_65%] min-w-0 flex flex-col">
+          <div className="flex-1 lg:flex-[0_0_65%] min-w-0 flex flex-col min-h-0">
             <div className="bg-slate-800 rounded-lg p-2 sm:p-3 lg:p-4 h-full flex flex-col min-h-0">
               {/* Top Bar with Settings */}
               <div className="flex justify-between items-center mb-1 sm:mb-2 flex-shrink-0">
@@ -1958,22 +1964,23 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
               </div>
 
               {/* Board - Takes remaining space */}
-              <div className="flex-1 min-h-0 flex items-center justify-center" style={{ position: 'relative' }}>
-                <div 
-                  ref={boardContainerRef}
-                  className="grid grid-cols-8 gap-0 bg-amber-800 p-0.5 sm:p-1 rounded-lg w-full max-w-full" 
-                  style={{ 
-                    position: 'relative', 
-                    zIndex: 0, 
-                    aspectRatio: '1',
-                    maxHeight: '100%',
-                    width: '100%',
-                    height: 'auto'
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                  }}
+              <div 
+                  className="flex-1 min-h-0 flex items-center justify-center overflow-hidden" 
+                  style={{ position: 'relative', containerType: 'size' }}
                 >
+                <div 
+                    ref={boardContainerRef}
+                    className="grid grid-cols-8 gap-0 bg-amber-800 p-0.5 sm:p-1 rounded-lg"
+                    style={{ 
+                      position: 'relative', 
+                      zIndex: 0, 
+                      aspectRatio: '1 / 1',
+                      width: 'min(100cqw, 100cqh)',
+                      maxWidth: '100%',
+                      maxHeight: '100%',
+                      margin: '0 auto',
+                    }}
+                  >
                   {Array.from({ length: BOARD_SIZE * BOARD_SIZE }, (_, i) => renderSquare(i))}
                   {/* Dragged piece overlay - follows cursor/touch */}
                   {draggingPiece && dragPosition && boardContainerRef.current && (() => {
@@ -2002,53 +2009,6 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
                     );
                   })()}
                 </div>
-                {/* Animated piece overlay - renders above everything when moving */}
-                {animatingPiece && (() => {
-                  const fromDisplayIndex = boardIndexToDisplayIndex(animatingPiece.from);
-                  const toDisplayIndex = boardIndexToDisplayIndex(animatingPiece.to);
-                  const fromPos = indexToPos(fromDisplayIndex);
-                  const toPos = indexToPos(toDisplayIndex);
-                  const piece = board[animatingPiece.to] || board[animatingPiece.from];
-                  if (!piece) return null;
-                  const display = getPieceDisplay(piece);
-                  
-                  // Calculate position as percentage of board size
-                  const squareSizePercent = 100 / BOARD_SIZE;
-                  const startX = (fromPos.col * squareSizePercent) + (squareSizePercent / 2);
-                  const startY = (fromPos.row * squareSizePercent) + (squareSizePercent / 2);
-                  
-                  // Calculate movement distance in squares (positive means moving right/down)
-                  const rowDiff = toPos.row - fromPos.row;
-                  const colDiff = toPos.col - fromPos.col;
-                  
-                  // Convert to percentage of square size (each square is 100% of square size)
-                  // Multiply by 100 to get percentage of the element's own width/height
-                  const moveXPercent = colDiff * 100;
-                  const moveYPercent = rowDiff * 100;
-                  
-                  return (
-                    <div
-                      className="absolute pointer-events-none select-none flex items-center justify-center"
-                      style={{
-                        left: `${startX}%`,
-                        top: `${startY}%`,
-                        transform: 'translate(-50%, -50%)',
-                        zIndex: 10000,
-                        width: `${squareSizePercent}%`,
-                        height: `${squareSizePercent}%`,
-                        animation: 'pieceMoveOverlay 0.1s cubic-bezier(0.4, 0, 0.2, 1)',
-                        animationFillMode: 'forwards',
-                        '--move-x': `${moveXPercent}%`,
-                        '--move-y': `${moveYPercent}%`,
-                      } as React.CSSProperties & { '--move-x': string; '--move-y': string }}
-                    >
-                      <span className="text-lg sm:text-xl md:text-2xl lg:text-3xl filter drop-shadow-lg relative z-10">{display.emoji}</span>
-                      {display.isKing && (
-                        <span className="text-sm sm:text-base md:text-lg lg:text-xl absolute -top-0.5 sm:-top-1 left-1/2 transform -translate-x-1/2 filter drop-shadow-lg z-20">👑</span>
-                      )}
-                    </div>
-                  );
-                })()}
               </div>
 
               {/* Current Player Info (Bottom) */}
@@ -2093,6 +2053,9 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
                     <Button onClick={handleRematch} size="sm" className="w-full sm:w-auto text-xs sm:text-sm py-1.5">Play Again</Button>
                     <Button onClick={handleLeave} variant="danger" size="sm" className="w-full sm:w-auto text-xs sm:text-sm py-1.5">Leave</Button>
                   </div>
+                  {rematchRequested && !showRematch && (
+                    <div className="mt-2 text-xs text-slate-300">Rematch requested. Waiting for opponent...</div>
+                  )}
                 </div>
               )}
 
@@ -2106,7 +2069,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
           </div>
 
           {/* Right Section: Chat Sidebar */}
-          <div className="lg:flex-[0_0_35%] min-w-0 flex flex-col">
+          <div className="lg:flex-[0_0_35%] min-w-0 flex flex-col min-h-0">
             <div className="bg-slate-800 rounded-lg p-2 sm:p-3 h-full flex flex-col min-h-0">
               <div className="flex items-center justify-between mb-2 flex-shrink-0">
                 <h3 className="text-sm sm:text-base font-semibold text-white">Chat</h3>
@@ -2117,7 +2080,7 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({
 
               {/* Chat Messages - Scrollable, fills available space on desktop, fixed larger height on mobile */}
               <div 
-                className="bg-slate-900 rounded-lg p-1.5 sm:p-2 mb-2 overflow-y-auto flex-shrink-0 h-[180px] lg:flex-1 lg:min-h-0"
+                className="bg-slate-900 rounded-lg p-1.5 sm:p-2 mb-2 overflow-y-auto flex-shrink-0 max-h-[180px] lg:flex-1 lg:min-h-0"
               >
                 {chatMessages.length === 0 ? (
                   <p className="text-[10px] sm:text-xs text-slate-400 text-center py-4">No messages yet. Start chatting!</p>

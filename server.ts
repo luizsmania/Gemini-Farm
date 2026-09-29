@@ -846,16 +846,32 @@ io.on('connection', (socket) => {
       }
       
       // Check for continued jump
-      const canJump = canContinueJump(game.board, moveMessage.to!, game.currentTurn);
-      
-      if (canJump && result.captures.length > 0) {
-        // Continue jump - don't reset timer, same turn
-        // Captures already tracked above
-        game.canContinueJump = true;
-        game.continueJumpFrom = moveMessage.to!;
-        game.currentTurn = playerColor; // Keep same turn
+      // Critical: Only continue turn if current move was a capture AND more captures are available
+      if (result.captures.length > 0) {
+        // Current move captured a piece
+        const canJump = canContinueJump(game.board, moveMessage.to!, game.currentTurn);
+        
+        if (canJump) {
+          // Continue jump - don't reset timer, same turn
+          game.canContinueJump = true;
+          game.continueJumpFrom = moveMessage.to!;
+          game.currentTurn = playerColor; // Keep same turn
+        } else {
+          // No more captures available - end turn
+          game.canContinueJump = false;
+          game.continueJumpFrom = null;
+          game.currentTurn = game.currentTurn === 'red' ? 'black' : 'red';
+          game.moveTimerStart = Date.now(); // Reset timer for new turn
+          
+          // Clear old move timer and start new one
+          const oldTimer = moveTimers.get(moveMessage.matchId!);
+          if (oldTimer) {
+            clearTimeout(oldTimer);
+          }
+          startMoveTimer(moveMessage.matchId!, game);
+        }
       } else {
-        // Switch turn - reset timer
+        // No capture in this move - always switch turn
         game.canContinueJump = false;
         game.continueJumpFrom = null;
         game.currentTurn = game.currentTurn === 'red' ? 'black' : 'red';
