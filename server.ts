@@ -18,68 +18,31 @@ import { isValidUUID, isValidBoardPosition, sanitizeNickname, isValidNickname, s
 import { rateLimitMove, rateLimitChat, rateLimitLobby, rateLimitNickname } from './middleware/rateLimiter.js';
 // DOMPurify removed - using simple server-side sanitization instead
 import logger, { logGameEvent, logSocketEvent, logSecurityEvent } from './utils/logger.js';
+import { getAllowedOrigins, isAllowedOrigin } from './utils/originConfig.js';
 
 // Create HTTP server
 const httpServer = http.createServer();
 
-// Configure CORS for production
-const getCorsOrigin = () => {
-  // Development: allow localhost
-  if (process.env.NODE_ENV === 'development') {
-    return process.env.CLIENT_URL || 'http://localhost:3000';
-  }
-  
-  // Production: MUST specify allowed origins
-  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',').map(s => s.trim()) || [];
-  
-  if (allowedOrigins.length === 0) {
-    logger.error('ERROR: ALLOWED_ORIGINS must be set in production!');
-    logger.error('Set ALLOWED_ORIGINS=https://yourdomain.com,https://www.yourdomain.com');
-    // Fail fast in production
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('ALLOWED_ORIGINS environment variable is required in production');
-    }
-    // Development fallback
-    return 'http://localhost:3000';
-  }
-  
-  return allowedOrigins;
-};
-
-// Get allowed origins for CORS validation
-const getAllowedOrigins = () => {
-  const origin = getCorsOrigin();
-  if (typeof origin === 'string') {
-    return [origin];
-  }
-  if (Array.isArray(origin)) {
-    return origin;
-  }
-  return ['http://localhost:3000']; // Fallback
-};
+const allowedOrigins = getAllowedOrigins();
 
 // Create Socket.IO server
 const io = new Server(httpServer, {
   cors: {
     origin: (origin, callback) => {
-      const allowed = getAllowedOrigins();
-      
       // Allow requests with no origin (like mobile apps or curl requests)
       if (!origin) {
-        // In development, allow
         if (process.env.NODE_ENV === 'development') {
           callback(null, true);
           return;
         }
-        // In production, reject if origin required
         callback(new Error('Origin required'));
         return;
       }
-      
-      if (allowed.includes(origin)) {
+
+      if (isAllowedOrigin(origin)) {
         callback(null, true);
       } else {
-        logSecurityEvent('CORS rejected', origin || 'unknown', { allowed: allowed.join(', ') });
+        logSecurityEvent('CORS rejected', origin, { allowed: allowedOrigins.join(', ') || 'none' });
         callback(new Error('Not allowed by CORS'));
       }
     },
@@ -1278,7 +1241,8 @@ async function startServer() {
         process.exit(1);
       }
     
-    // Warn about missing optional vars in production
+    // Warn about missing optional vars in production. Vercel domains are allowed automatically,
+    // so a missing ALLOWED_ORIGINS entry should not crash a valid deployment.
     if (process.env.NODE_ENV === 'production') {
       const missingOptional: string[] = [];
       for (const [key, value] of Object.entries(optionalEnvVars)) {
@@ -1286,15 +1250,9 @@ async function startServer() {
           missingOptional.push(key);
         }
       }
-      
-      if (missingOptional.length > 0 && missingOptional.includes('ALLOWED_ORIGINS')) {
-        logger.error('✗ ALLOWED_ORIGINS is required in production for CORS security!');
-        logger.error('Set ALLOWED_ORIGINS=https://yourdomain.com,https://www.yourdomain.com');
-        process.exit(1);
-      }
-      
-      if (missingOptional.length > 0 && missingOptional.includes('ALLOWED_ORIGINS') === false) {
-        logger.warn('Missing optional environment variables (may cause issues)', { missingOptional });
+
+      if (missingOptional.length > 0) {
+        logger.warn('Missing optional environment variables (continuing with safe defaults)', { missingOptional });
       }
     }
     
