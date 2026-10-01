@@ -1,0 +1,14 @@
+node_modules/
+.git/
+.turbo/
+dist/
+build/
+.next/
+*.log
+*.mp4
+*.png
+*.jpg
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
