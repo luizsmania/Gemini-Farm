@@ -1323,10 +1323,9 @@ async function startServer() {
     }
 
     httpServer.listen(PORT, '0.0.0.0', () => {
-      const corsOrigin = getCorsOrigin();
       logger.info('Server started successfully', {
         port: PORT,
-        cors: typeof corsOrigin === 'string' ? corsOrigin : Array.isArray(corsOrigin) ? corsOrigin.join(',') : 'all origins',
+        cors: allowedOrigins.join(', '),
         healthCheck: `http://localhost:${PORT}/health`,
       });
     });
