@@ -1206,6 +1206,10 @@ io.on('connection', (socket) => {
 
 // Health check endpoint
 httpServer.on('request', async (req, res) => {
+  if (req.url?.startsWith('/socket.io/')) {
+    return;
+  }
+
   if (req.url === '/health') {
     // Check database health asynchronously
     const dbHealthy = await checkDatabaseHealth().catch(() => false);
