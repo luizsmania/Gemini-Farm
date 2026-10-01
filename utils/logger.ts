@@ -62,12 +62,10 @@ export const logger = winston.createLogger({
   ],
 });
 
-// Add console transport in development or if explicitly enabled
-if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_CONSOLE_LOGGING === 'true') {
-  logger.add(new winston.transports.Console({
-    format: consoleFormat,
-  }));
-}
+// Render and other hosted environments collect stdout rather than local log files.
+logger.add(new winston.transports.Console({
+  format: process.env.NODE_ENV === 'production' ? fileFormat : consoleFormat,
+}));
 
 // Note: Winston will automatically create the logs directory when writing the first log file
 // No manual directory creation needed
